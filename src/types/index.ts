@@ -26,7 +26,7 @@ export type Tier =
  * @property isAvoided - 비선호 역할 여부 (? 표시)
  */
 export interface Rank {
-    tier: Tier | string;
+    tier: Tier;
     div: number | string;
     score: number;
     isPreferred: boolean;

@@ -1,4 +1,4 @@
-import { Check } from 'lucide-react';
+import { Check, ShieldQuestion } from 'lucide-react';
 import { formatRank, TIER_LABEL_MAP } from '../../constants';
 import type { Rank, Role } from '../../types';
 import { DamageIcon, SupportIcon, TankIcon } from '../roles/icon';
@@ -28,6 +28,11 @@ const ASSIGNED_STYLES: Record<Role, { badge: string; marker: string }> = {
         badge: 'bg-emerald-400/10 ring-2 ring-emerald-400/80 shadow-[inset_0_0_10px_rgba(52,211,153,0.12)]',
         marker: 'bg-emerald-400 text-emerald-950',
     },
+};
+
+const UNRANKED_ASSIGNED_STYLE = {
+    badge: 'bg-slate-700/80 ring-2 ring-slate-300/70 shadow-[inset_0_0_10px_rgba(203,213,225,0.08)]',
+    marker: 'bg-slate-300 text-slate-900',
 };
 
 const getRoleIcon = (role: Role) => {
@@ -61,26 +66,36 @@ const getAccessibleLabel = (role: Role, rank: Rank, isAssigned: boolean): string
  */
 const RankBadge = ({ role, rank, isAssigned = false }: RankBadgeProps) => {
     const accessibleLabel = getAccessibleLabel(role, rank, isAssigned);
-    const statusClass = rank.isPreferred
+    const isUnranked = rank.tier === 'UNRANKED';
+    const statusClass = isUnranked
+        ? 'border-slate-600/70 bg-slate-800/80 text-slate-300'
+        : rank.isPreferred
         ? 'font-semibold text-amber-400'
         : rank.isAvoided
             ? 'text-rose-400'
             : 'text-slate-500';
-    const assignedStyle = isAssigned ? ASSIGNED_STYLES[role] : null;
+    const assignedStyle = isAssigned
+        ? isUnranked ? UNRANKED_ASSIGNED_STYLE : ASSIGNED_STYLES[role]
+        : null;
+    const containerClass = isUnranked
+        ? 'rounded-md border px-1.5 py-1'
+        : assignedStyle ? 'rounded-md px-1.5 py-1' : '';
 
     return (
         <span
-            className={`relative inline-flex shrink-0 items-center gap-1 text-xs ${statusClass} ${
-                assignedStyle ? `rounded-md px-1.5 py-1 ${assignedStyle.badge}` : ''
+            className={`relative inline-flex shrink-0 items-center gap-1 text-xs ${containerClass} ${statusClass} ${
+                assignedStyle?.badge ?? ''
             }`}
             aria-label={accessibleLabel}
             title={accessibleLabel}
             data-rank-role={role}
+            data-tier={rank.tier}
             data-assigned={isAssigned ? 'true' : undefined}
         >
             <span className="inline-flex" aria-hidden="true">
                 {getRoleIcon(role)}
             </span>
+            {isUnranked && <ShieldQuestion size={12} aria-hidden="true" />}
             <span aria-hidden="true">{formatRank(rank)}</span>
             {assignedStyle && (
                 <span

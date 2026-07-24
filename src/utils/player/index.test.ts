@@ -17,7 +17,7 @@ describe('reconcilePlayers', () => {
             createPlayer(1, 'Player#1234'),
             createPlayer(2, 'Old#9999', '기존 참가자'),
         ];
-        const incoming = [
+        const incoming: Player[] = [
             {
                 ...createPlayer(20, 'player#1234', '디스코드 이름'),
                 tank: { ...createPlayer(20, 'player#1234').tank, tier: 'PLATINUM', score: 2800 },
@@ -135,7 +135,7 @@ describe('isMatchResultStale', () => {
     it('참가자의 랭크가 바뀌면 다시 매칭이 필요하다고 판단한다', () => {
         const players = Array.from({ length: 10 }, (_, index) => createPlayer(index, `Player${index}#1234`));
         const result = createResult(players);
-        const changedPlayers = players.map((player, index) => index === 0
+        const changedPlayers: Player[] = players.map((player, index) => index === 0
             ? { ...player, tank: { ...player.tank, score: 2800, tier: 'PLATINUM' } }
             : player);
 
