@@ -169,11 +169,123 @@
     }
 }
 
-[data-guide-highlight='true'] {
-    border-radius: 0.75rem;
-    box-shadow: inset 0 0 0 2px rgb(34 211 238 / 0.95), inset 0 0 24px rgb(34 211 238 / 0.1);
-    scroll-margin-top: 6rem;
-    scroll-margin-bottom: 14rem;
+.guide-scrim {
+    pointer-events: none;
+    background: rgb(2 6 23 / 0.68);
+}
+
+.guide-spotlight {
+    pointer-events: none;
+    border: 2px solid rgb(34 211 238 / 0.95);
+    border-radius: 0.9rem;
+    box-shadow:
+        0 0 0 1px rgb(103 232 249 / 0.25),
+        0 0 28px rgb(34 211 238 / 0.34),
+        inset 0 0 24px rgb(34 211 238 / 0.08);
+}
+
+.guide-spotlight::before,
+.guide-spotlight::after {
+    position: absolute;
+    content: '';
+    border: 1px solid rgb(103 232 249 / 0.72);
+    border-radius: 1.1rem;
+    inset: -8px;
+    animation: guide-spotlight-pulse 1.8s ease-in-out infinite;
+}
+
+.guide-spotlight::after {
+    border-color: rgb(56 189 248 / 0.38);
+    inset: -14px;
+    animation-delay: 900ms;
+}
+
+[data-guide-action-pulse='true'] {
+    position: relative;
+    z-index: 81;
+    transform-origin: center;
+    will-change: transform;
+    animation: guide-action-pulse 1.15s ease-in-out infinite;
+}
+
+[data-guide-swap-active='true'] [data-match-player-id]::after {
+    position: absolute;
+    z-index: 20;
+    border: 1px solid rgb(103 232 249 / 0.78);
+    border-radius: 0.5rem;
+    content: '';
+    inset: 3px;
+    pointer-events: none;
+    animation: guide-swap-player-highlight 1.2s ease-in-out infinite;
+}
+
+.guide-arrow {
+    position: absolute;
+    z-index: 1;
+    width: 14px;
+    height: 14px;
+    border: solid rgb(34 211 238 / 0.45);
+    background: rgb(2 6 23 / 0.98);
+    transform: rotate(45deg);
+}
+
+.guide-arrow[data-placement='right'] {
+    top: calc(var(--guide-arrow-offset) - 7px);
+    left: -7px;
+    border-width: 0 0 1px 1px;
+}
+
+.guide-arrow[data-placement='left'] {
+    top: calc(var(--guide-arrow-offset) - 7px);
+    right: -7px;
+    border-width: 1px 1px 0 0;
+}
+
+.guide-arrow[data-placement='bottom'] {
+    top: -7px;
+    left: calc(var(--guide-arrow-offset) - 7px);
+    border-width: 1px 0 0 1px;
+}
+
+.guide-arrow[data-placement='top'] {
+    bottom: -7px;
+    left: calc(var(--guide-arrow-offset) - 7px);
+    border-width: 0 1px 1px 0;
+}
+
+@keyframes guide-spotlight-pulse {
+    0%,
+    100% {
+        opacity: 0.35;
+        transform: scale(0.99);
+    }
+
+    50% {
+        opacity: 1;
+        transform: scale(1.025);
+    }
+}
+
+@keyframes guide-action-pulse {
+    0%,
+    100% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.07);
+    }
+}
+
+@keyframes guide-swap-player-highlight {
+    0%,
+    100% {
+        opacity: 0.35;
+    }
+
+    50% {
+        opacity: 1;
+    }
 }
 
 .tab-active {

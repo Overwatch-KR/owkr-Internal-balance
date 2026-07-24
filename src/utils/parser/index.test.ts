@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SAMPLE_ROSTER } from '../../constants';
+import { balancePlayers } from '../balance';
 import { parseLineToPlayer, parseMultipleLines } from './index';
 
 const RECENT_PARTICIPANTS = `
@@ -50,12 +51,47 @@ zzuzzu#31457 플(배치X) ? / 골(배치X) ? / 마4! (복귀유저)
 `;
 
 describe('가이드 예시 명단', () => {
-    it('실제 참가자 10명과 마이크 미사용 상태를 파싱한다', () => {
+    it('선호·비선호·무표시·미배치가 섞인 참가자 10명을 파싱한다', () => {
         const result = parseMultipleLines(SAMPLE_ROSTER);
+        const ranks = result.players.flatMap(player => [
+            player.tank,
+            player.dps,
+            player.sup,
+        ]);
+        const playersWithoutIntent = result.players.filter(player => (
+            [player.tank, player.dps, player.sup].every(rank => (
+                !rank.isPreferred && !rank.isAvoided
+            ))
+        ));
+        const playersWithPreference = result.players.filter(player => (
+            [player.tank, player.dps, player.sup].some(rank => rank.isPreferred)
+        ));
+        const playersWithAvoidance = result.players.filter(player => (
+            [player.tank, player.dps, player.sup].some(rank => rank.isAvoided)
+        ));
+        const playersWithUnrankedRole = result.players.filter(player => (
+            [player.tank, player.dps, player.sup].some(rank => rank.tier === 'UNRANKED')
+        ));
 
         expect(result.players).toHaveLength(10);
         expect(result.failedLines).toHaveLength(0);
         expect(result.players.at(-1)?.noMic).toBe(true);
+        expect(ranks).toHaveLength(30);
+        expect(playersWithPreference).toHaveLength(5);
+        expect(playersWithAvoidance).toHaveLength(4);
+        expect(playersWithUnrankedRole).toHaveLength(1);
+        expect(playersWithoutIntent).toHaveLength(5);
+    });
+
+    it('예시 매칭 결과에서 배정 예외 3종의 대상이 실제로 생긴다', () => {
+        const { players } = parseMultipleLines(SAMPLE_ROSTER);
+        const { result } = balancePlayers(players);
+
+        expect(result.metrics).toMatchObject({
+            preferenceViolations: 1,
+            avoidedAssignments: 1,
+            unrankedAssignments: 1,
+        });
     });
 });
 

@@ -18,10 +18,11 @@ import {
 } from 'lucide-react';
 import type { Player } from '../../../types';
 import type { RosterImportMode } from '../../../utils/player';
+import type { PlayerInputMode, PlayerInputs } from '../../../hooks/use-player-input';
 import TierSelect from './tier-select';
 import ParticipantChecker from './participant-checker';
 
-export type PlayerInputMode = 'discord' | 'manual' | 'mentions';
+export type { PlayerInputMode } from '../../../hooks/use-player-input';
 
 interface RosterImportPreview {
     incomingCount: number;
@@ -36,14 +37,7 @@ interface PlayerFormProps {
     players: Player[];
     participantMentions: string;
     setParticipantMentions: (value: string) => void;
-    inputs: {
-        name: string;
-        discordName: string;
-        noMic: boolean;
-        tTier: string; tDiv: string; tPref: boolean; tAvoid: boolean;
-        dTier: string; dDiv: string; dPref: boolean; dAvoid: boolean;
-        sTier: string; sDiv: string; sPref: boolean; sAvoid: boolean;
-    };
+    inputs: PlayerInputs;
     setInputs: React.Dispatch<React.SetStateAction<PlayerFormProps['inputs']>>;
     addPlayer: () => void;
     pasteText: string;

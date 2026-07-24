@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
-import { BookOpen, Shuffle, RefreshCcw, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { useCallback, useState, useEffect, useRef } from 'react';
+import { BookOpen, Shuffle, RefreshCcw, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
-import { SAMPLE_ROSTER, TIERS, getScore } from './constants';
+import { SAMPLE_ROSTER, getTierScore } from './constants';
 import { parseMultipleLines } from './utils/parser';
-import { recalculateMatchResult } from './utils/balance';
+import { swapMatchResultPlayers } from './utils/balance';
 import {
     isMatchResultStale,
     reconcilePlayers,
@@ -12,12 +12,17 @@ import {
 import { normalizePlayerRolePreferences } from './utils/role-preference';
 import { setWithExpiry, getWithExpiry, removeItem, cleanupExpired } from './utils/storage';
 import { useBalance } from './hooks/use-balance';
-import type { MatchResultData, Player, Role, SwapSource, Tier } from './types';
+import { useOnboardingGuide } from './hooks/use-onboarding-guide';
+import { usePlayerInput } from './hooks/use-player-input';
+import { useToast } from './hooks/use-toast';
+import type { MatchResultData, Player, Role, SwapSource } from './types';
 import type { RosterImportMode } from './utils/player';
-import PlayerForm, { type PlayerInputMode } from './components/player/form';
+import PlayerForm from './components/player/form';
 import PlayerList from './components/player/list';
 import MatchResult from './components/match/result';
 import { OnboardingGuide } from './components/onboarding-guide';
+import { GuideResumePrompt } from './components/guide-resume-prompt';
+import { AppToast } from './components/app-toast';
 
 const STORAGE_KEYS = {
     PLAYERS: 'owkr_players',
@@ -30,38 +35,7 @@ interface StoredMatchState {
     alternatives: MatchResultData[];
 }
 
-interface PendingRosterImport {
-    incoming: Player[];
-    failedLines: string[];
-}
-
-interface ToastAction {
-    label: string;
-    onClick: () => void;
-}
-
-interface ToastState {
-    type: 'success' | 'error';
-    message: string;
-    action?: ToastAction;
-}
-
 const normalizePlayerName = (name: string) => name.trim().toLowerCase();
-
-const createDefaultPlayerInputs = () => ({
-    name: '',
-    discordName: '',
-    noMic: false,
-    tTier: 'DIAMOND', tDiv: '3', tPref: false, tAvoid: false,
-    dTier: 'DIAMOND', dDiv: '3', dPref: false, dAvoid: false,
-    sTier: 'PLATINUM', sDiv: '3', sPref: false, sAvoid: false
-});
-
-const getEditableDivision = (tier: string, division: number | string) => {
-    if (tier === 'UNRANKED') return '0';
-    const value = String(division);
-    return ['1', '2', '3', '4', '5'].includes(value) ? value : '3';
-};
 
 const App = () => {
     const [players, setPlayers] = useState<Player[]>(() => {
@@ -138,65 +112,30 @@ const App = () => {
         }
     }, [alternatives, result]);
 
-    const [inputs, setInputs] = useState(createDefaultPlayerInputs);
-    const [pasteText, setPasteText] = useState('');
-    const [failedParses, setFailedParses] = useState<string[]>([]);
-    const [pendingRosterImport, setPendingRosterImport] = useState<PendingRosterImport | null>(null);
-    const [inputMode, setInputMode] = useState<PlayerInputMode>('discord');
-    const [editingPlayerId, setEditingPlayerId] = useState<number | null>(null);
-    const [isInputCollapsed, setIsInputCollapsed] = useState(players.length > 0);
-    const [inputSummary, setInputSummary] = useState(
-        players.length > 0 ? `저장된 참가자 ${players.length}명 불러옴` : '',
-    );
+    const {
+        editingPlayerId,
+        editPlayer: handleEditPlayer,
+        failedParses,
+        inputMode,
+        inputSummary,
+        inputs,
+        isInputCollapsed,
+        pasteText,
+        pendingRosterImport,
+        resetInputs: handleCancelEdit,
+        selectInputMode: handleGuideInputMode,
+        setFailedParses,
+        setInputMode,
+        setInputSummary,
+        setInputs,
+        setIsInputCollapsed,
+        setPasteText,
+        setPendingRosterImport,
+        updatePasteText,
+    } = usePlayerInput(players.length);
     const [swapSource, setSwapSource] = useState<SwapSource | null>(null);
-    const [toast, setToast] = useState<ToastState | null>(null);
-    const [isGuideOpen, setIsGuideOpen] = useState(false);
-    const toastTimerRef = useRef<number | null>(null);
-    const activeGuide = isGuideOpen ? (result ? 'result' : 'start') : null;
-
-    const dismissToast = () => {
-        if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
-        toastTimerRef.current = null;
-        setToast(null);
-    };
-
-    const showToast = (
-        type: ToastState['type'],
-        message: string,
-        action?: ToastAction,
-    ) => {
-        setToast({ type, message, action });
-        if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
-        toastTimerRef.current = window.setTimeout(
-            () => setToast(null),
-            action ? 8000 : 2800,
-        );
-    };
-
-    useEffect(() => {
-        return () => {
-            if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
-        };
-    }, []);
-
-    useEffect(() => {
-        const hasUnsavedInput = Boolean(
-            pasteText.trim()
-            || inputs.name.trim()
-            || inputs.discordName.trim()
-            || inputs.noMic
-            || pendingRosterImport,
-        );
-        if (!hasUnsavedInput) return;
-
-        const warnBeforeUnload = (event: BeforeUnloadEvent) => {
-            event.preventDefault();
-            event.returnValue = '';
-        };
-
-        window.addEventListener('beforeunload', warnBeforeUnload);
-        return () => window.removeEventListener('beforeunload', warnBeforeUnload);
-    }, [inputs.discordName, inputs.name, inputs.noMic, pasteText, pendingRosterImport]);
+    const [showAllRanks, setShowAllRanks] = useState(false);
+    const { dismissToast, showToast, toast } = useToast();
 
     const addPlayer = () => {
         if (!inputs.name.trim()) {
@@ -213,15 +152,14 @@ const App = () => {
             showToast('error', '이미 추가된 플레이어입니다.');
             return;
         }
-        const tTier = inputs.tTier as Tier;
-        const dTier = inputs.dTier as Tier;
-        const sTier = inputs.sTier as Tier;
+        const tTier = inputs.tTier;
+        const dTier = inputs.dTier;
+        const sTier = inputs.sTier;
         const existingPlayer = editingPlayerId === null
             ? undefined
             : players.find(player => player.id === editingPlayerId);
         if (editingPlayerId !== null && !existingPlayer) {
-            setEditingPlayerId(null);
-            setInputs(createDefaultPlayerInputs());
+            handleCancelEdit();
             showToast('error', '수정할 참가자를 찾지 못했습니다.');
             return;
         }
@@ -230,17 +168,16 @@ const App = () => {
             id: editingPlayerId ?? Date.now(),
             name: inputs.name.trim(),
             discordName: inputs.discordName.trim() || undefined,
-            tank: { tier: tTier, div: inputs.tDiv, score: getScore(TIERS.indexOf(tTier), inputs.tDiv), isPreferred: inputs.tPref, isAvoided: inputs.tAvoid },
-            dps: { tier: dTier, div: inputs.dDiv, score: getScore(TIERS.indexOf(dTier), inputs.dDiv), isPreferred: inputs.dPref, isAvoided: inputs.dAvoid },
-            sup: { tier: sTier, div: inputs.sDiv, score: getScore(TIERS.indexOf(sTier), inputs.sDiv), isPreferred: inputs.sPref, isAvoided: inputs.sAvoid },
+            tank: { tier: tTier, div: inputs.tDiv, score: getTierScore(tTier, inputs.tDiv), isPreferred: inputs.tPref, isAvoided: inputs.tAvoid },
+            dps: { tier: dTier, div: inputs.dDiv, score: getTierScore(dTier, inputs.dDiv), isPreferred: inputs.dPref, isAvoided: inputs.dAvoid },
+            sup: { tier: sTier, div: inputs.sDiv, score: getTierScore(sTier, inputs.sDiv), isPreferred: inputs.sPref, isAvoided: inputs.sAvoid },
             noMic: inputs.noMic,
         });
         const isEditing = editingPlayerId !== null;
         setPlayers(prev => isEditing
             ? prev.map(player => player.id === editingPlayerId ? newPlayer : player)
             : [...prev, newPlayer]);
-        setInputs(createDefaultPlayerInputs());
-        setEditingPlayerId(null);
+        handleCancelEdit();
         if (failedParses.length === 0) {
             setInputSummary(isEditing
                 ? `참가자 수정 완료 · ${newPlayer.discordName ?? newPlayer.name}`
@@ -252,34 +189,6 @@ const App = () => {
         showToast('success', isEditing
             ? '참가자 정보를 수정했습니다.'
             : willJoinWaitlist ? '정원 초과로 대기열에 추가했습니다.' : '플레이어를 추가했습니다.');
-    };
-
-    const handleEditPlayer = (player: Player) => {
-        setInputs({
-            name: player.name,
-            discordName: player.discordName ?? '',
-            noMic: player.noMic ?? false,
-            tTier: player.tank.tier,
-            tDiv: getEditableDivision(player.tank.tier, player.tank.div),
-            tPref: player.tank.isPreferred,
-            tAvoid: player.tank.isAvoided,
-            dTier: player.dps.tier,
-            dDiv: getEditableDivision(player.dps.tier, player.dps.div),
-            dPref: player.dps.isPreferred,
-            dAvoid: player.dps.isAvoided,
-            sTier: player.sup.tier,
-            sDiv: getEditableDivision(player.sup.tier, player.sup.div),
-            sPref: player.sup.isPreferred,
-            sAvoid: player.sup.isAvoided,
-        });
-        setEditingPlayerId(player.id);
-        setInputMode('manual');
-        setIsInputCollapsed(false);
-    };
-
-    const handleCancelEdit = () => {
-        setEditingPlayerId(null);
-        setInputs(createDefaultPlayerInputs());
     };
 
     const commitRosterImport = (
@@ -309,8 +218,7 @@ const App = () => {
             )));
         setSwapSource(null);
         setPendingRosterImport(null);
-        setEditingPlayerId(null);
-        setInputs(createDefaultPlayerInputs());
+        handleCancelEdit();
 
         const summaryParts = mode === 'replace'
             ? [
@@ -386,19 +294,21 @@ const App = () => {
         );
     };
 
-    const handleRunMatching = async () => {
+    const handleRunMatching = async (): Promise<boolean> => {
         if (!isReady) {
             showToast('error', '팀을 짜려면 참가자 10명이 필요합니다.');
-            return;
+            return false;
         }
         setAlternatives([]);
         setSwapSource(null);
         const participants = players.slice(0, 10);
         try {
             await balanceTeams(participants);
+            return true;
         } catch (error) {
             const message = error instanceof Error ? error.message : '매칭 중 오류가 발생했습니다.';
             showToast('error', message);
+            return false;
         }
     };
 
@@ -409,18 +319,11 @@ const App = () => {
                 setSwapSource(null);
                 return;
             }
-            const newResult = structuredClone(result);
-            const teamNames: ('teamA' | 'teamB')[] = ['teamA', 'teamB'];
-            const sourceTeam = teamNames[swapSource.teamIdx];
-            const targetTeam = teamNames[teamIdx];
-
-            const sourcePlayer = newResult[sourceTeam].assignment[swapSource.role][swapSource.index];
-            const targetPlayer = newResult[targetTeam].assignment[role][idx];
-
-            newResult[sourceTeam].assignment[swapSource.role][swapSource.index] = targetPlayer;
-            newResult[targetTeam].assignment[role][idx] = sourcePlayer;
-
-            setResult(recalculateMatchResult(newResult));
+            setResult(swapMatchResultPlayers(
+                result,
+                swapSource,
+                { teamIdx, role, index: idx },
+            ));
             setSwapSource(null);
             showToast('success', '포지션을 교체했습니다.');
         } else {
@@ -517,10 +420,6 @@ const App = () => {
         });
     };
 
-    const handleDismissGuide = () => {
-        setIsGuideOpen(false);
-    };
-
     const handleUseExampleRoster = () => {
         if (players.length > 0) {
             showToast('error', '기존 명단이 있어 더미 참가자를 추가하지 않았습니다.');
@@ -536,19 +435,53 @@ const App = () => {
         commitRosterImport(examplePlayers, [], 'replace');
     };
 
-    const handleGuideInputMode = (mode: PlayerInputMode) => {
-        setInputMode(mode);
-        setIsInputCollapsed(false);
+    const handleSelectAlternative = (idx: number) => {
+        const alternative = alternatives[idx];
+        if (!alternative || !result) return;
+        const remaining = alternatives.filter((_, index) => index !== idx);
+        remaining.unshift(result);
+        setResult(alternative);
+        setAlternatives(remaining);
+        setSwapSource(null);
     };
 
-    const handleToggleGuide = () => {
-        if (isGuideOpen) {
-            setIsGuideOpen(false);
-            return;
-        }
-        if (!result) setIsInputCollapsed(false);
-        setIsGuideOpen(true);
-    };
+    const {
+        activeGuide,
+        completeGuide: handleCompleteGuide,
+        dismissGuide: handleDismissGuide,
+        handleGuideStepChange,
+        initialGuideStep,
+        isGuideOpen,
+        isGuideResumePromptOpen,
+        restartGuide: handleRestartGuide,
+        resumableProgress,
+        resumeGuide: handleResumeGuide,
+        toggleGuide: handleToggleGuide,
+    } = useOnboardingGuide({
+        alternativeCount: alternatives.length,
+        hasResult: Boolean(result),
+        onApplyAlternative: () => handleSelectAlternative(0),
+        onPrepareOpen: () => {
+            setSwapSource(null);
+            if (!result) setIsInputCollapsed(false);
+        },
+        onSelectInputMode: handleGuideInputMode,
+        onSwapExample: () => {
+            if (!result) return;
+            setResult(swapMatchResultPlayers(
+                result,
+                { teamIdx: 0, role: 'TANK', index: 0 },
+                { teamIdx: 1, role: 'TANK', index: 0 },
+            ));
+            setSwapSource(null);
+        },
+        onUseExampleRoster: handleUseExampleRoster,
+        playerCount: players.length,
+    });
+    const handleInterruptGuide = useCallback(() => {
+        handleDismissGuide();
+        showToast('info', '가이드가 중단되었습니다. 진행 단계를 저장했습니다.');
+    }, [handleDismissGuide, showToast]);
 
     // 참여 명단 (첫 10명)과 대기 명단 (나머지) 분리
     const participants = players.slice(0, 10);
@@ -582,8 +515,11 @@ const App = () => {
                     <button
                         type="button"
                         onClick={handleToggleGuide}
-                        aria-expanded={isGuideOpen}
-                        aria-controls="onboarding-guide"
+                        data-guide-control="true"
+                        aria-expanded={isGuideOpen || isGuideResumePromptOpen}
+                        aria-controls={isGuideResumePromptOpen
+                            ? 'guide-resume-prompt'
+                            : 'onboarding-guide'}
                         className="inline-flex min-h-9 touch-manipulation items-center gap-1.5 rounded-md px-2.5 text-sm font-medium text-slate-400 transition-colors hover:bg-white/5 hover:text-cyan-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70"
                     >
                         <BookOpen size={15} aria-hidden="true" />
@@ -609,10 +545,7 @@ const App = () => {
                             setInputs={setInputs}
                             addPlayer={addPlayer}
                             pasteText={pasteText}
-                            onPasteTextChange={(value) => {
-                                setPasteText(value);
-                                setPendingRosterImport(null);
-                            }}
+                            onPasteTextChange={updatePasteText}
                             handlePaste={handlePaste}
                             importPreview={rosterImportPreview ? {
                                 incomingCount: pendingRosterImport?.incoming.length ?? 0,
@@ -723,15 +656,9 @@ const App = () => {
                                         isStale={isResultStale}
                                         isGeneratingAlternatives={isBalancing}
                                         onCancelSwap={() => setSwapSource(null)}
-                                        onSelectAlternative={(idx) => {
-                                            const alt = alternatives[idx];
-                                            if (!alt) return;
-                                            const remaining = alternatives.filter((_, i) => i !== idx);
-                                            remaining.unshift(result!);
-                                            setResult(alt);
-                                            setAlternatives(remaining);
-                                            setSwapSource(null);
-                                        }}
+                                        onSelectAlternative={handleSelectAlternative}
+                                        onShowAllRanksChange={setShowAllRanks}
+                                        showAllRanks={showAllRanks}
                                     />
                                 </motion.div>
                             )}
@@ -740,51 +667,33 @@ const App = () => {
                 </div>
             </main>
             <AnimatePresence>
+                {isGuideResumePromptOpen && resumableProgress && (
+                    <GuideResumePrompt
+                        key="guide-resume-prompt"
+                        progress={resumableProgress}
+                        onDismiss={handleDismissGuide}
+                        onRestart={handleRestartGuide}
+                        onResume={handleResumeGuide}
+                    />
+                )}
+            </AnimatePresence>
+            <AnimatePresence>
                 {activeGuide && (
                     <OnboardingGuide
                         key={activeGuide}
+                        initialStep={initialGuideStep ?? undefined}
+                        isWorking={isBalancing}
                         variant={activeGuide}
+                        onComplete={handleCompleteGuide}
                         onDismiss={handleDismissGuide}
-                        onSelectInputMode={activeGuide === 'start' ? handleGuideInputMode : undefined}
-                        onUseExample={activeGuide === 'start' && players.length === 0
-                            ? handleUseExampleRoster
-                            : undefined}
+                        onInterrupt={handleInterruptGuide}
+                        onStepChange={handleGuideStepChange}
                     />
                 )}
             </AnimatePresence>
             <AnimatePresence>
                 {toast && (
-                    <motion.div
-                        initial={{ opacity: 0, y: 16, scale: 0.96 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 12, scale: 0.96 }}
-                        className={`fixed bottom-[max(1.5rem,env(safe-area-inset-bottom))] left-1/2 z-[80] flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-2 rounded-lg border px-4 py-3 text-sm font-medium shadow-2xl backdrop-blur ${
-                            toast.type === 'error'
-                                ? 'border-rose-500/30 bg-rose-950/90 text-rose-100'
-                                : 'border-emerald-500/30 bg-emerald-950/90 text-emerald-100'
-                        }`}
-                        role="status"
-                        aria-live="polite"
-                    >
-                        {toast.type === 'error'
-                            ? <AlertCircle size={16} aria-hidden="true" />
-                            : <CheckCircle2 size={16} aria-hidden="true" />}
-                        <span className="min-w-0 break-words">{toast.message}</span>
-                        {toast.action && (
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    const action = toast.action;
-                                    if (!action) return;
-                                    dismissToast();
-                                    action.onClick();
-                                }}
-                                className="ml-2 min-h-8 shrink-0 rounded-md border border-current/30 px-2.5 text-xs font-semibold transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current"
-                            >
-                                {toast.action.label}
-                            </button>
-                        )}
-                    </motion.div>
+                    <AppToast toast={toast} onDismiss={dismissToast} />
                 )}
             </AnimatePresence>
         </div>

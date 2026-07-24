@@ -3,7 +3,7 @@ import { Rank, Tier } from "../types";
 /**
  * @description 티어 순서를 점수 계산 기준으로 고정한 목록.
  */
-export const TIERS: Tier[] = [
+export const TIERS: Exclude<Tier, 'UNRANKED'>[] = [
     "BRONZE",
     "SILVER",
     "GOLD",
@@ -15,9 +15,14 @@ export const TIERS: Tier[] = [
 ];
 
 /**
- * @description 티어 코드와 UI 표기를 연결하는 라벨 맵.
+ * @description 선택 UI에서 노출하는 정식 티어와 미배치 상태 목록.
  */
-export const TIER_LABEL_MAP: Record<string, string> = {
+export const TIER_OPTIONS: readonly Tier[] = [...TIERS, 'UNRANKED'];
+
+/**
+ * @description 티어·상태 코드와 UI 표기를 연결하는 라벨 맵.
+ */
+export const TIER_LABEL_MAP: Record<Tier, string> = {
     BRONZE: "브론즈",
     SILVER: "실버",
     GOLD: "골드",
@@ -32,16 +37,16 @@ export const TIER_LABEL_MAP: Record<string, string> = {
 /**
  * @description 사용 가이드에서 실제 참가자 명단을 구성하는 10명 예시 데이터.
  */
-export const SAMPLE_ROSTER = `Alpha#1001 다3!/플2/플3
+export const SAMPLE_ROSTER = `Alpha#1001 다3/플2?/플3?
 Bravo#1002 플1/다4!/플2
-Charlie#1003 플3/다2!/골1
-Delta#1004 다5/플1!/플2
-Echo#1005 플2/다3/다4!
-Foxtrot#1006 골1/플2/다3!
-Golf#1007 플4/플3/다1!
-Hotel#1008 다4/플2/플1!
-India#1009 플1/다5!/플3
-Juliet#1010 다2!/플4/플2 마이크x`;
+Charlie#1003 플3/다2/골1
+Delta#1004 다5/플1?/플2?
+Echo#1005 플2/다3/다4
+Foxtrot#1006 골1/플2/다3
+Golf#1007 플4/플3/다1
+Hotel#1008 다4/플2?/플1?
+India#1009 플1?/다5?/미배치
+Juliet#1010 다2/플4/플2 마이크x`;
 
 /**
  * @description 비선형 티어 기본 점수 테이블. 고티어일수록 간격이 커져 실력 격차를 반영한다.
@@ -63,16 +68,27 @@ export const getScore = (tierIdx: number, div: string | number): number => {
 };
 
 /**
+ * @description 티어 상태를 안전하게 점수로 변환하며 미배치는 점수 티어로 추정하지 않는다.
+ * @param tier - 티어 또는 미배치 상태
+ * @param div - 등급 (1~5, 미배치는 0)
+ * @returns 정식 티어의 계산 점수 또는 미배치 상태값 0
+ */
+export const getTierScore = (tier: Tier, div: string | number): number => {
+    if (tier === 'UNRANKED') return 0;
+    return getScore(TIERS.indexOf(tier), div);
+};
+
+/**
  * @description Rank 정보를 UI용 짧은 문자열로 변환한다.
  * @param rankObj - 랭크 객체
- * @returns 포맷된 문자열 (예: "다3", "플1★", "-")
+ * @returns 포맷된 문자열 (예: "다3", "플1★", "미배치")
  *
  * @example
  * formatRank({ tier: 'DIAMOND', div: 3, score: 2700, isPreferred: true })
  * // => "다3★"
  */
 export const formatRank = (rankObj: Rank): string => {
-    if (!rankObj || rankObj.tier === 'UNRANKED') return "-";
+    if (!rankObj || rankObj.tier === 'UNRANKED') return "미배치";
     const shortName = TIER_LABEL_MAP[rankObj.tier]?.[0] || "?";
     const intentMark = rankObj.isPreferred ? '★' : rankObj.isAvoided ? '?' : '';
     return `${shortName}${rankObj.div}${intentMark}`;
