@@ -14,7 +14,11 @@ const rank: Rank = {
 const createPlayer = (id: number): Player => ({
     id,
     name: `Player${id}#1234`,
-    tank: { ...rank, score: id === 1 ? 1700 : id === 6 ? 1400 : rank.score },
+    tank: {
+        ...rank,
+        score: id === 1 ? 1700 : id === 6 ? 1400 : rank.score,
+        isPreferred: id === 2,
+    },
     dps: { ...rank, score: id === 7 || id === 8 ? 1600 : rank.score },
     sup: { ...rank },
 });
@@ -64,7 +68,9 @@ describe('MatchResult', () => {
         expect(markup).toContain('aria-checked="false"');
         expect(markup).toContain('탱·딜·힐 티어 표시');
         expect(markup).toContain('밸런스 요약');
-        expect(markup).toContain('선호 역할 이탈');
+        expect(markup).toContain('선호 역할 이탈 1명');
+        expect(markup).toContain('Player2#1234');
+        expect(markup).toContain('1팀 · 딜러');
         expect(markup).toContain('비선호 배정');
         expect(markup).not.toContain('data-export-render');
         expect(markup).not.toContain('data-display-mode');
@@ -103,5 +109,45 @@ describe('MatchResult', () => {
         expect(markup).toContain('Player1#1234</span> 선택됨 · 바꿀 플레이어를 선택하세요');
         expect(markup).toContain('선택 취소');
         expect(markup).toContain('aria-pressed="true"');
+    });
+
+    it('비선호와 미배치 역할에 배정된 대상도 이름과 배정 위치로 알려준다', () => {
+        const avoidedPlayer: Player = {
+            ...players[2],
+            dps: { ...players[2].dps, isAvoided: true },
+        };
+        const unrankedPlayer: Player = {
+            ...players[3],
+            sup: {
+                ...players[3].sup,
+                tier: 'UNRANKED',
+                div: 0,
+                score: 0,
+            },
+        };
+        const resultWithExceptions: MatchResultData = {
+            ...matchResult,
+            teamA: {
+                ...matchResult.teamA,
+                assignment: {
+                    ...matchResult.teamA.assignment,
+                    DPS: [players[1], avoidedPlayer],
+                    SUPPORT: [unrankedPlayer, players[4]],
+                },
+            },
+        };
+        const markup = renderToStaticMarkup(
+            <MatchResult
+                matchResult={resultWithExceptions}
+                onSlotClick={vi.fn()}
+                swapSource={null}
+            />,
+        );
+
+        expect(markup).toContain('비선호 배정 1명');
+        expect(markup).toContain('Player3#1234');
+        expect(markup).toContain('미배치 역할 1명');
+        expect(markup).toContain('Player4#1234');
+        expect(markup).toContain('1팀 · 힐러');
     });
 });

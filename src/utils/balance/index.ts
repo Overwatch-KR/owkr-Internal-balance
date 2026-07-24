@@ -5,6 +5,7 @@ import type {
     Rank,
     Role,
     RoleAssignment,
+    SwapSource,
     TeamResult,
 } from '../../types';
 
@@ -331,6 +332,34 @@ export const recalculateMatchResult = (matchResult: MatchResultData): MatchResul
         diff: Math.abs(teamAResult.realScore - teamBResult.realScore),
         metrics: buildMetrics(teamAResult, teamBResult),
     };
+};
+
+/**
+ * @description 두 결과 슬롯의 플레이어를 교체하고 팀 점수와 밸런스 지표를 즉시 다시 계산한다.
+ */
+export const swapMatchResultPlayers = (
+    matchResult: MatchResultData,
+    source: SwapSource,
+    target: SwapSource,
+): MatchResultData => {
+    const teamNames = ['teamA', 'teamB'] as const;
+    const sourceTeam = teamNames[source.teamIdx];
+    const targetTeam = teamNames[target.teamIdx];
+    if (!sourceTeam || !targetTeam) {
+        throw new Error('교체할 팀을 찾지 못했습니다.');
+    }
+
+    const nextResult = structuredClone(matchResult);
+    const sourcePlayer = nextResult[sourceTeam].assignment[source.role][source.index];
+    const targetPlayer = nextResult[targetTeam].assignment[target.role][target.index];
+    if (!sourcePlayer || !targetPlayer) {
+        throw new Error('교체할 플레이어를 찾지 못했습니다.');
+    }
+
+    nextResult[sourceTeam].assignment[source.role][source.index] = targetPlayer;
+    nextResult[targetTeam].assignment[target.role][target.index] = sourcePlayer;
+
+    return recalculateMatchResult(nextResult);
 };
 
 /**

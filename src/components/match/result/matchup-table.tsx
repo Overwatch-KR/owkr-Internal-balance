@@ -1,7 +1,8 @@
-import { useState } from 'react';
-import { Ban, Star, MicOff } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import { Ban, Star, MicOff, ShieldQuestion } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { formatRank } from '../../../constants';
-import type { MatchResultData, Player, Role, SwapSource } from '../../../types';
+import type { MatchResultData, Player, Role, SwapSource, Tier } from '../../../types';
 import { DamageIcon, SupportIcon, TankIcon } from '../../roles/icon';
 import { getTierImage } from '../../../utils/tier';
 import PlayerTooltip from './player-tooltip';
@@ -101,6 +102,40 @@ const getRoleIcon = (role: Role) => {
 const getRankInfo = (player: Player, role: Role) =>
     role === 'TANK' ? player.tank : role === 'DPS' ? player.dps : player.sup;
 
+/**
+ * @description 정식 티어는 기존 이미지를, 미배치는 같은 자리에 중립 방패 아이콘을 표시한다.
+ */
+const renderTierIcon = (tier: Tier, size: 20 | 24): ReactNode => {
+    if (tier === 'UNRANKED') {
+        return (
+            <span
+                className={`inline-flex shrink-0 items-center justify-center rounded-md border border-slate-600/70 bg-slate-800/80 text-slate-300 ${
+                    size === 24 ? 'h-6 w-6' : 'h-5 w-5'
+                }`}
+                data-tier-icon="unranked"
+                aria-hidden="true"
+            >
+                <ShieldQuestion size={size === 24 ? 16 : 14} strokeWidth={1.75} />
+            </span>
+        );
+    }
+
+    const tierImage = getTierImage(tier);
+    if (!tierImage) return null;
+
+    return (
+        <img
+            src={tierImage}
+            alt=""
+            width={size}
+            height={size}
+            aria-hidden="true"
+            className={`${size === 24 ? 'h-6 w-6' : 'h-5 w-5'} object-contain`}
+            onError={(event) => event.currentTarget.style.display = 'none'}
+        />
+    );
+};
+
 const roleRankDefs = [
     { role: 'TANK', label: '탱커' },
     { role: 'DPS', label: '딜러' },
@@ -129,14 +164,20 @@ const PlayerRankSummary = ({ player, assignedRole, align }: PlayerRankSummaryPro
         {roleRankDefs.map(({ role, label }) => {
             const rank = getRankInfo(player, role);
             const isAssigned = role === assignedRole;
+            const isUnranked = rank.tier === 'UNRANKED';
             const rankLabel = formatRank(rank);
 
             return (
                 <span
                     key={role}
                     title={`${label} ${rankLabel}${isAssigned ? ' · 현재 배정' : ''}`}
+                    data-tier={rank.tier}
                     className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-1 font-mono text-[11px] leading-none ${
-                        isAssigned
+                        isUnranked
+                            ? isAssigned
+                                ? 'border-slate-400/70 bg-slate-700/70 font-semibold text-slate-100 ring-1 ring-slate-300/40'
+                                : 'border-slate-600/50 bg-slate-800/60 text-slate-400'
+                            : isAssigned
                             ? 'border-cyan-400/40 bg-cyan-400/10 font-semibold text-cyan-200'
                             : rank.isPreferred
                                 ? 'border-transparent text-amber-400'
@@ -172,7 +213,7 @@ const MatchupTable = ({ matchResult, onSlotClick, swapSource, showAllRanks = fal
         swapSource?.teamIdx === teamIdx && swapSource?.role === role && swapSource?.index === idx;
 
     return (
-        <div className="space-y-1.5">
+        <div id="matchup-table" className="space-y-1.5">
             {/* 팀 헤더 */}
             <div className="mb-4 flex items-center px-3.5">
                 <div className="flex-1 flex items-center gap-2">
@@ -190,8 +231,6 @@ const MatchupTable = ({ matchResult, onSlotClick, swapSource, showAllRanks = fal
             {rows.map((row) => {
                 const rankA = getRankInfo(row.playerA, row.role);
                 const rankB = getRankInfo(row.playerB, row.role);
-                const tierImgA = getTierImage(rankA.tier);
-                const tierImgB = getTierImage(rankB.tier);
                 const selA = isSelected(0, row.role, row.arrayIndex);
                 const selB = isSelected(1, row.role, row.arrayIndex);
                 const slotKeyA = `A-${row.role}-${row.arrayIndex}`;
@@ -200,6 +239,7 @@ const MatchupTable = ({ matchResult, onSlotClick, swapSource, showAllRanks = fal
                 return (
                     <div
                         key={`${row.role}-${row.arrayIndex}`}
+                        id={row.role === 'TANK' ? 'matchup-tank-row' : undefined}
                         className="flex items-center gap-1.5 rounded-lg border border-slate-700/70 bg-slate-950/20"
                     >
                         {/* TEAM 1 슬롯 */}
@@ -210,11 +250,19 @@ const MatchupTable = ({ matchResult, onSlotClick, swapSource, showAllRanks = fal
                             onFocus={() => setHoveredSlot(slotKeyA)}
                             onBlur={() => setHoveredSlot(null)}
                         >
-                            <div
-                                className={`relative flex w-full min-w-0 items-center justify-end rounded-l-lg transition-colors ${
-                                    selA ? 'bg-blue-900/40 ring-1 ring-inset ring-blue-500' : 'hover:bg-slate-800/70'
-                                }`}
-                            >
+                            <AnimatePresence initial={false} mode="popLayout">
+                                <motion.div
+                                    key={row.playerA.id}
+                                    data-match-player-id={row.playerA.id}
+                                    data-match-team="1"
+                                    initial={{ opacity: 0, x: '38%' }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    exit={{ opacity: 0, x: '38%' }}
+                                    transition={{ duration: 0.48, ease: [0.22, 1, 0.36, 1] }}
+                                    className={`relative flex w-full min-w-0 items-center justify-end rounded-l-lg transition-colors ${
+                                        selA ? 'bg-blue-900/40 ring-1 ring-inset ring-blue-500' : 'hover:bg-slate-800/70'
+                                    }`}
+                                >
                                 <button
                                     type="button"
                                     data-exclude-export
@@ -247,10 +295,7 @@ const MatchupTable = ({ matchResult, onSlotClick, swapSource, showAllRanks = fal
                                                     className="flex-1"
                                                 />
                                                 <div className="flex shrink-0 items-center gap-1.5">
-                                                    {tierImgA && (
-                                                        <img src={tierImgA} alt={rankA.tier} width={24} height={24} className="h-6 w-6 object-contain"
-                                                            onError={(e) => e.currentTarget.style.display = 'none'} />
-                                                    )}
+                                                    {renderTierIcon(rankA.tier, 24)}
                                                     <span className="w-10 text-left font-mono text-sm text-slate-200">
                                                         {formatRank(rankA).replace('★', '').replace('?', '')}
                                                     </span>
@@ -264,10 +309,7 @@ const MatchupTable = ({ matchResult, onSlotClick, swapSource, showAllRanks = fal
                                             />
                                             <div className="mt-1 flex w-full items-center justify-end gap-1.5 sm:hidden">
                                                 <div className="flex shrink-0 items-center gap-1.5">
-                                                    {tierImgA && (
-                                                        <img src={tierImgA} alt={rankA.tier} width={20} height={20} className="h-5 w-5 object-contain"
-                                                            onError={(e) => e.currentTarget.style.display = 'none'} />
-                                                    )}
+                                                    {renderTierIcon(rankA.tier, 20)}
                                                     <span className="font-mono text-xs text-slate-200">
                                                         {formatRank(rankA).replace('★', '').replace('?', '')}
                                                     </span>
@@ -276,7 +318,8 @@ const MatchupTable = ({ matchResult, onSlotClick, swapSource, showAllRanks = fal
                                         </>
                                     )}
                                 </div>
-                            </div>
+                                </motion.div>
+                            </AnimatePresence>
                             <PlayerTooltip player={row.playerA} visible={hoveredSlot === slotKeyA} />
                         </div>
 
@@ -293,11 +336,19 @@ const MatchupTable = ({ matchResult, onSlotClick, swapSource, showAllRanks = fal
                             onFocus={() => setHoveredSlot(slotKeyB)}
                             onBlur={() => setHoveredSlot(null)}
                         >
-                            <div
-                                className={`relative flex w-full min-w-0 items-center rounded-r-lg transition-colors ${
-                                    selB ? 'bg-red-900/30 ring-1 ring-inset ring-red-500' : 'hover:bg-slate-800/70'
-                                }`}
-                            >
+                            <AnimatePresence initial={false} mode="popLayout">
+                                <motion.div
+                                    key={row.playerB.id}
+                                    data-match-player-id={row.playerB.id}
+                                    data-match-team="2"
+                                    initial={{ opacity: 0, x: '-38%' }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    exit={{ opacity: 0, x: '-38%' }}
+                                    transition={{ duration: 0.48, ease: [0.22, 1, 0.36, 1] }}
+                                    className={`relative flex w-full min-w-0 items-center rounded-r-lg transition-colors ${
+                                        selB ? 'bg-red-900/30 ring-1 ring-inset ring-red-500' : 'hover:bg-slate-800/70'
+                                    }`}
+                                >
                                 <button
                                     type="button"
                                     data-exclude-export
@@ -327,10 +378,7 @@ const MatchupTable = ({ matchResult, onSlotClick, swapSource, showAllRanks = fal
                                                     <span className="w-10 text-right font-mono text-sm text-slate-200">
                                                         {formatRank(rankB).replace('★', '').replace('?', '')}
                                                     </span>
-                                                    {tierImgB && (
-                                                        <img src={tierImgB} alt={rankB.tier} width={24} height={24} className="h-6 w-6 object-contain"
-                                                            onError={(e) => e.currentTarget.style.display = 'none'} />
-                                                    )}
+                                                    {renderTierIcon(rankB.tier, 24)}
                                                 </div>
                                                 <PlayerIdentityWithStatus
                                                     player={row.playerB}
@@ -350,16 +398,14 @@ const MatchupTable = ({ matchResult, onSlotClick, swapSource, showAllRanks = fal
                                                     <span className="font-mono text-xs text-slate-200">
                                                         {formatRank(rankB).replace('★', '').replace('?', '')}
                                                     </span>
-                                                    {tierImgB && (
-                                                        <img src={tierImgB} alt={rankB.tier} width={20} height={20} className="h-5 w-5 object-contain"
-                                                            onError={(e) => e.currentTarget.style.display = 'none'} />
-                                                    )}
+                                                    {renderTierIcon(rankB.tier, 20)}
                                                 </div>
                                             </div>
                                         </>
                                     )}
                                 </div>
-                            </div>
+                                </motion.div>
+                            </AnimatePresence>
                             <PlayerTooltip player={row.playerB} visible={hoveredSlot === slotKeyB} alignRight />
                         </div>
                     </div>

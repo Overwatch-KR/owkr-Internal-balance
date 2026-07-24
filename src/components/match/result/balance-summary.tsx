@@ -1,5 +1,5 @@
 import { BarChart3, ShieldCheck } from 'lucide-react';
-import type { MatchResultData, Role, TeamResult } from '../../../types';
+import type { MatchResultData, Player, Rank, Role, TeamResult } from '../../../types';
 
 interface BalanceSummaryProps {
     matchResult: MatchResultData;
@@ -17,6 +17,35 @@ const ROLE_DIFFERENCE_DEFS = [
     { role: 'SUPPORT', label: '힐러' },
 ] as const;
 
+interface AssignedPlayer {
+    player: Player;
+    rank: Rank;
+    role: Role;
+    teamLabel: '1팀' | '2팀';
+}
+
+const ROLE_LABELS: Record<Role, string> = {
+    TANK: '탱커',
+    DPS: '딜러',
+    SUPPORT: '힐러',
+};
+
+const getRank = (player: Player, role: Role): Rank => (
+    role === 'TANK' ? player.tank : role === 'DPS' ? player.dps : player.sup
+);
+
+const getAssignedPlayers = (
+    team: TeamResult,
+    teamLabel: AssignedPlayer['teamLabel'],
+): AssignedPlayer[] => (Object.keys(team.assignment) as Role[]).flatMap(role => (
+    team.assignment[role].map(player => ({
+        player,
+        rank: getRank(player, role),
+        role,
+        teamLabel,
+    }))
+));
+
 const getRoleAverageScore = (team: TeamResult, role: Role): number => {
     const players = team.assignment[role];
     const totalScore = players.reduce((sum, player) => {
@@ -33,11 +62,30 @@ const getRoleAverageScore = (team: TeamResult, role: Role): number => {
 const BalanceSummary = ({ matchResult }: BalanceSummaryProps) => {
     const { metrics, teamA, teamB } = matchResult;
     const totalDiff = metrics?.totalDiff ?? matchResult.diff;
-    const exceptions = [
-        { label: '선호 역할 이탈', value: metrics?.preferenceViolations },
-        { label: '비선호 배정', value: metrics?.avoidedAssignments },
-        { label: '미배치 역할', value: metrics?.unrankedAssignments },
+    const assignedPlayers = [
+        ...getAssignedPlayers(teamA, '1팀'),
+        ...getAssignedPlayers(teamB, '2팀'),
     ];
+    const exceptions = [
+        {
+            label: '선호 역할 이탈',
+            players: assignedPlayers.filter(({ player, rank }) => (
+                [player.tank, player.dps, player.sup].some(candidate => candidate.isPreferred)
+                && !rank.isPreferred
+            )),
+        },
+        {
+            label: '비선호 배정',
+            players: assignedPlayers.filter(({ rank }) => rank.isAvoided),
+        },
+        {
+            label: '미배치 역할',
+            players: assignedPlayers.filter(({ rank }) => (
+                rank.tier === 'UNRANKED' || rank.score === 0
+            )),
+        },
+    ];
+    const activeExceptions = exceptions.filter(({ players }) => players.length > 0);
     const roleDifferences = ROLE_DIFFERENCE_DEFS.map(({ role, label }) => {
         const scoreDifference = getRoleAverageScore(teamA, role) - getRoleAverageScore(teamB, role);
 
@@ -100,21 +148,51 @@ const BalanceSummary = ({ matchResult }: BalanceSummaryProps) => {
                     <ShieldCheck size={12} aria-hidden="true" />
                     배정 예외
                 </span>
-                {exceptions.map(({ label, value }) => (
+                {exceptions.map(({ label, players }) => (
                     <span
                         key={label}
                         className={`rounded-full border px-2 py-1 tabular-nums ${
-                            value === undefined
-                                ? 'border-slate-700 bg-slate-800/60 text-slate-400'
-                                : value === 0
+                            players.length === 0
                                 ? 'border-emerald-500/20 bg-emerald-500/[0.07] text-emerald-300'
                                 : 'border-amber-500/20 bg-amber-500/[0.07] text-amber-300'
                         }`}
                     >
-                        {label} {value === undefined ? '—' : `${value}명`}
+                        {label} {players.length}명
                     </span>
                 ))}
             </div>
+
+            {activeExceptions.length > 0 && (
+                <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                    {activeExceptions.map(({ label, players }) => (
+                        <div
+                            key={label}
+                            className="min-w-0 rounded-lg border border-amber-500/15 bg-amber-500/[0.05] px-3 py-2"
+                        >
+                            <p className="text-[11px] font-semibold text-amber-200">{label}</p>
+                            <ul className="mt-1.5 space-y-1" aria-label={`${label} 대상`}>
+                                {players.map(({ player, role, teamLabel }) => {
+                                    const playerName = player.discordName ?? player.name;
+
+                                    return (
+                                        <li
+                                            key={`${player.id}-${role}`}
+                                            className="flex min-w-0 items-center justify-between gap-2 text-[11px]"
+                                        >
+                                            <span className="min-w-0 break-words font-medium text-slate-200">
+                                                {playerName}
+                                            </span>
+                                            <span className="shrink-0 text-slate-500">
+                                                {teamLabel} · {ROLE_LABELS[role]}
+                                            </span>
+                                        </li>
+                                    );
+                                })}
+                            </ul>
+                        </div>
+                    ))}
+                </div>
+            )}
         </section>
     );
 };

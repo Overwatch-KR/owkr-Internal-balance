@@ -62,10 +62,17 @@ describe('MatchupTable', () => {
         );
 
         expect(markup).not.toContain('현재 배정');
-        expect(countMatches(markup, /<img /g)).toBe(20);
+        expect(countMatches(markup, /<img /g)).toBe(12);
+        expect(countMatches(markup, /data-tier-icon="unranked"/g)).toBe(8);
+        expect(markup).toContain('미배치');
         expect(markup).toContain('sm:hidden');
         expect(markup).toContain('hidden w-full min-w-0');
         expect(markup).toContain('aria-label="마이크 미사용"');
+        expect(markup).toContain('id="matchup-table"');
+        expect(markup).toContain('id="matchup-tank-row"');
+        expect(countMatches(markup, /data-match-player-id=/g)).toBe(10);
+        expect(countMatches(markup, /data-match-team="1"/g)).toBe(5);
+        expect(countMatches(markup, /data-match-team="2"/g)).toBe(5);
     });
 
     it('전체 티어를 탱커, 딜러, 지원 순서로 표시하고 현재 배정 역할만 강조한다', () => {
@@ -83,7 +90,9 @@ describe('MatchupTable', () => {
         expect(countMatches(markup, /title="딜러 /g)).toBe(10);
         expect(countMatches(markup, /title="힐러 /g)).toBe(10);
         expect(countMatches(markup, /· 현재 배정"/g)).toBe(10);
-        expect(countMatches(markup, /border-cyan-400\/40/g)).toBe(10);
+        expect(countMatches(markup, /border-cyan-400\/40/g)).toBe(6);
+        expect(countMatches(markup, /ring-slate-300\/40/g)).toBe(4);
+        expect(countMatches(markup, /data-tier="UNRANKED"/g)).toBe(10);
         expect(countMatches(markup, /<img /g)).toBe(0);
     });
 
@@ -99,7 +108,7 @@ describe('MatchupTable', () => {
 
         expect(markup).toContain('title="탱커 브1★ · 현재 배정"');
         expect(markup).toContain('title="딜러 다3? · 현재 배정"');
-        expect(markup).toContain('title="힐러 -');
+        expect(markup).toContain('title="힐러 미배치');
         expect(markup).toContain('aria-label="마이크 미사용"');
         expect(markup).toContain('아주 긴 디스코드 닉네임 1');
         expect(markup).toContain('VeryLongBattleTag1#12345');

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { MatchResultData, Player, Rank, Role } from '../../types';
-import { balancePlayers, recalculateMatchResult } from './index';
+import { balancePlayers, recalculateMatchResult, swapMatchResultPlayers } from './index';
 
 const createRank = (role: Role, preferredRole: Role): Rank => ({
     tier: 'DIAMOND',
@@ -157,6 +157,24 @@ describe('balancePlayers', () => {
             avoidedAssignments: expect.any(Number),
             unrankedAssignments: expect.any(Number),
         });
+    });
+
+    it('가이드 교체도 원본을 보존하면서 선수와 밸런스 지표를 함께 갱신한다', () => {
+        const roles: Role[] = ['TANK', 'TANK', 'DPS', 'DPS', 'DPS', 'DPS', 'SUPPORT', 'SUPPORT', 'SUPPORT', 'SUPPORT'];
+        const original = balancePlayers(roles.map((role, index) => createPlayer(index + 1, role))).result;
+        const sourcePlayer = original.teamA.assignment.TANK[0];
+        const targetPlayer = original.teamB.assignment.TANK[0];
+
+        const swapped = swapMatchResultPlayers(
+            original,
+            { teamIdx: 0, role: 'TANK', index: 0 },
+            { teamIdx: 1, role: 'TANK', index: 0 },
+        );
+
+        expect(swapped.teamA.assignment.TANK[0].id).toBe(targetPlayer.id);
+        expect(swapped.teamB.assignment.TANK[0].id).toBe(sourcePlayer.id);
+        expect(original.teamA.assignment.TANK[0].id).toBe(sourcePlayer.id);
+        expect(swapped.metrics?.totalDiff).toBe(swapped.diff);
     });
 
     it('10명이 아니면 명확한 오류를 반환한다', () => {

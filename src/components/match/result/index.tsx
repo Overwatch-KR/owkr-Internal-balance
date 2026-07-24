@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 import { AlertTriangle, ArrowLeftRight, Loader2, X } from 'lucide-react';
 import type { MatchResultData, Role, SwapSource, TeamResult } from '../../../types';
 import { useCopyImage } from '../../../hooks/use-copy-image';
@@ -15,6 +15,8 @@ interface MatchResultProps {
     isGeneratingAlternatives?: boolean;
     isStale?: boolean;
     onCancelSwap?: () => void;
+    onShowAllRanksChange?: (showAllRanks: boolean) => void;
+    showAllRanks?: boolean;
 }
 
 const NUMBER_FORMATTER = new Intl.NumberFormat('ko-KR');
@@ -52,9 +54,10 @@ const MatchResult = ({
     isGeneratingAlternatives = false,
     isStale = false,
     onCancelSwap,
+    onShowAllRanksChange,
+    showAllRanks = false,
 }: MatchResultProps) => {
     const captureRef = useRef<HTMLDivElement>(null);
-    const [showAllRanks, setShowAllRanks] = useState(false);
     const { copyStatus, handleCopyImage } = useCopyImage(captureRef);
     const selectedSwapPlayer = getSelectedSwapPlayer(matchResult, swapSource);
 
@@ -119,7 +122,7 @@ const MatchResult = ({
                     type="button"
                     role="switch"
                     aria-checked={showAllRanks}
-                    onClick={() => setShowAllRanks(current => !current)}
+                    onClick={() => onShowAllRanksChange?.(!showAllRanks)}
                     className="group inline-flex min-h-9 touch-manipulation items-center gap-2.5 rounded-lg px-2 text-xs font-medium text-slate-400 transition-colors hover:bg-white/5 hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70"
                 >
                     탱·딜·힐 티어 표시
