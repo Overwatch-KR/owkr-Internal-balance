@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Player, Tier } from '../types';
+import type { AvoidedRoleWarning } from '../utils/parser';
 
 export type PlayerInputMode = 'discord' | 'manual' | 'mentions';
 
@@ -24,6 +25,7 @@ export interface PlayerInputs {
 export interface PendingRosterImport {
     incoming: Player[];
     failedLines: string[];
+    avoidedRoleWarnings: AvoidedRoleWarning[];
 }
 
 /**
@@ -63,6 +65,7 @@ export const usePlayerInput = (initialPlayerCount: number) => {
     const [inputs, setInputs] = useState(createDefaultPlayerInputs);
     const [pasteText, setPasteText] = useState('');
     const [failedParses, setFailedParses] = useState<string[]>([]);
+    const [avoidedRoleWarnings, setAvoidedRoleWarnings] = useState<AvoidedRoleWarning[]>([]);
     const [pendingRosterImport, setPendingRosterImport] = useState<PendingRosterImport | null>(null);
     const [inputMode, setInputMode] = useState<PlayerInputMode>('discord');
     const [editingPlayerId, setEditingPlayerId] = useState<number | null>(null);
@@ -129,6 +132,7 @@ export const usePlayerInput = (initialPlayerCount: number) => {
     }, []);
 
     return {
+        avoidedRoleWarnings,
         editingPlayerId,
         editPlayer,
         failedParses,
@@ -140,6 +144,7 @@ export const usePlayerInput = (initialPlayerCount: number) => {
         pendingRosterImport,
         resetInputs,
         selectInputMode,
+        setAvoidedRoleWarnings,
         setEditingPlayerId,
         setFailedParses,
         setInputMode,

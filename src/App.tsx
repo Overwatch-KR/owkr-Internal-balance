@@ -2,7 +2,7 @@ import { useCallback, useState, useEffect, useRef } from 'react';
 import { BookOpen, Shuffle, RefreshCcw, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
 import { SAMPLE_ROSTER, getTierScore } from './constants';
-import { parseMultipleLines } from './utils/parser';
+import { parseMultipleLines, type AvoidedRoleWarning } from './utils/parser';
 import { swapMatchResultPlayers } from './utils/balance';
 import {
     isMatchResultStale,
@@ -113,6 +113,7 @@ const App = () => {
     }, [alternatives, result]);
 
     const {
+        avoidedRoleWarnings,
         editingPlayerId,
         editPlayer: handleEditPlayer,
         failedParses,
@@ -124,6 +125,7 @@ const App = () => {
         pendingRosterImport,
         resetInputs: handleCancelEdit,
         selectInputMode: handleGuideInputMode,
+        setAvoidedRoleWarnings,
         setFailedParses,
         setInputMode,
         setInputSummary,
@@ -177,8 +179,14 @@ const App = () => {
         setPlayers(prev => isEditing
             ? prev.map(player => player.id === editingPlayerId ? newPlayer : player)
             : [...prev, newPlayer]);
+        setAvoidedRoleWarnings(previous => previous.filter(
+            warning => normalizePlayerName(warning.playerName) !== normalizePlayerName(newPlayer.name),
+        ));
         handleCancelEdit();
-        if (failedParses.length === 0) {
+        const hasOtherAvoidedWarnings = avoidedRoleWarnings.some(
+            warning => normalizePlayerName(warning.playerName) !== normalizePlayerName(newPlayer.name),
+        );
+        if (failedParses.length === 0 && !hasOtherAvoidedWarnings) {
             setInputSummary(isEditing
                 ? `참가자 수정 완료 · ${newPlayer.discordName ?? newPlayer.name}`
                 : `참가자 1명 추가 완료 · ${newPlayer.discordName ?? newPlayer.name}`);
@@ -194,11 +202,14 @@ const App = () => {
     const commitRosterImport = (
         incoming: Player[],
         failedLines: string[],
+        importAvoidedRoleWarnings: AvoidedRoleWarning[],
         mode: RosterImportMode,
     ) => {
         const reconciled = reconcilePlayers(players, incoming, mode);
         const waitlistCount = Math.max(reconciled.players.length - 10, 0);
-        const hasIssues = failedLines.length > 0 || failedParses.length > 0;
+        const hasIssues = failedLines.length > 0
+            || failedParses.length > 0
+            || importAvoidedRoleWarnings.length > 0;
         const syncedResult = result
             ? syncMatchResultPlayerIdentities(result, reconciled.players)
             : null;
@@ -209,6 +220,16 @@ const App = () => {
         if (failedLines.length > 0) {
             setFailedParses(previous => [...new Set([...previous, ...failedLines])]);
         }
+        setAvoidedRoleWarnings((previous) => {
+            if (mode === 'replace') return importAvoidedRoleWarnings;
+            if (importAvoidedRoleWarnings.length === 0) return previous;
+
+            const byPlayerName = new Map(previous.map(warning => [warning.playerName, warning]));
+            for (const warning of importAvoidedRoleWarnings) {
+                byPlayerName.set(warning.playerName, warning);
+            }
+            return [...byPlayerName.values()];
+        });
         setPlayers(reconciled.players);
         setResult(shouldClearMatchResult ? null : syncedResult);
         setAlternatives(shouldClearMatchResult
@@ -246,12 +267,15 @@ const App = () => {
         const failedMessage = failedLines.length > 0
             ? ` · ${failedLines.length}명 직접 확인 필요`
             : '';
+        const avoidedMessage = importAvoidedRoleWarnings.length > 0
+            ? ` · 비선호 중복 ${importAvoidedRoleWarnings.length}명 확인 필요`
+            : '';
         const rematchMessage = shouldClearMatchResult && reconciled.players.length >= 10
             ? ' · 팀을 다시 배정해 주세요'
             : '';
         showToast(
-            failedLines.length > 0 ? 'error' : 'success',
-            `${mode === 'replace' ? '새 참여 명단을 적용했습니다' : '기존 명단에 추가했습니다'}${waitlistMessage}${failedMessage}${rematchMessage}`,
+            failedLines.length > 0 || importAvoidedRoleWarnings.length > 0 ? 'error' : 'success',
+            `${mode === 'replace' ? '새 참여 명단을 적용했습니다' : '기존 명단에 추가했습니다'}${waitlistMessage}${failedMessage}${avoidedMessage}${rematchMessage}`,
         );
     };
 
@@ -260,6 +284,7 @@ const App = () => {
         commitRosterImport(
             pendingRosterImport.incoming,
             pendingRosterImport.failedLines,
+            pendingRosterImport.avoidedRoleWarnings,
             mode,
         );
     };
@@ -269,7 +294,7 @@ const App = () => {
             showToast('error', '붙여넣을 디스코드 채팅이 없습니다.');
             return;
         }
-        const { players: parsedPlayers, failedLines } = parseMultipleLines(pasteText);
+        const { players: parsedPlayers, failedLines, avoidedRoleWarnings: importWarnings } = parseMultipleLines(pasteText);
 
         if (parsedPlayers.length === 0) {
             if (failedLines.length > 0) {
@@ -282,14 +307,18 @@ const App = () => {
         }
 
         if (players.length === 0) {
-            commitRosterImport(parsedPlayers, failedLines, 'replace');
+            commitRosterImport(parsedPlayers, failedLines, importWarnings, 'replace');
             return;
         }
 
-        setPendingRosterImport({ incoming: parsedPlayers, failedLines });
+        setPendingRosterImport({
+            incoming: parsedPlayers,
+            failedLines,
+            avoidedRoleWarnings: importWarnings,
+        });
         setIsInputCollapsed(false);
         showToast(
-            failedLines.length > 0 ? 'error' : 'success',
+            failedLines.length > 0 || importWarnings.length > 0 ? 'error' : 'success',
             `${parsedPlayers.length}명을 읽었습니다. 명단 변경 내용을 확인해 주세요.`,
         );
     };
@@ -339,8 +368,12 @@ const App = () => {
         const previousResult = result;
         const previousAlternatives = alternatives;
         const previousSwapSource = swapSource;
+        const previousAvoidedRoleWarnings = avoidedRoleWarnings;
 
         setPlayers(prev => prev.filter(p => p.id !== playerId));
+        setAvoidedRoleWarnings(previous => previous.filter(
+            warning => normalizePlayerName(warning.playerName) !== normalizePlayerName(removedPlayer.name),
+        ));
         if (removedIndex < 10) {
             setResult(null);
             setAlternatives([]);
@@ -361,6 +394,7 @@ const App = () => {
                         restored.splice(Math.min(removedIndex, restored.length), 0, removedPlayer);
                         return restored;
                     });
+                    setAvoidedRoleWarnings(previousAvoidedRoleWarnings);
                     if (removedIndex < 10) {
                         setResult(previousResult);
                         setAlternatives(previousAlternatives);
@@ -379,11 +413,13 @@ const App = () => {
         const previousResult = result;
         const previousAlternatives = alternatives;
         const previousSwapSource = swapSource;
+        const previousAvoidedRoleWarnings = avoidedRoleWarnings;
 
         setPlayers([]);
         setResult(null);
         setAlternatives([]);
         setPendingRosterImport(null);
+        setAvoidedRoleWarnings([]);
         setInputSummary('');
         setIsInputCollapsed(false);
         setSwapSource(null);
@@ -392,6 +428,7 @@ const App = () => {
             label: '실행 취소',
             onClick: () => {
                 setPlayers(previousPlayers);
+                setAvoidedRoleWarnings(previousAvoidedRoleWarnings);
                 setInputSummary(previousInputSummary);
                 setIsInputCollapsed(previousInputCollapsed);
                 setResult(previousResult);
@@ -426,13 +463,17 @@ const App = () => {
             return;
         }
 
-        const { players: examplePlayers, failedLines } = parseMultipleLines(SAMPLE_ROSTER);
-        if (examplePlayers.length !== 10 || failedLines.length > 0) {
+        const {
+            players: examplePlayers,
+            failedLines,
+            avoidedRoleWarnings: exampleWarnings,
+        } = parseMultipleLines(SAMPLE_ROSTER);
+        if (examplePlayers.length !== 10 || failedLines.length > 0 || exampleWarnings.length > 0) {
             showToast('error', '더미 참가자 명단을 불러오지 못했습니다.');
             return;
         }
 
-        commitRosterImport(examplePlayers, [], 'replace');
+        commitRosterImport(examplePlayers, [], [], 'replace');
     };
 
     const handleSelectAlternative = (idx: number) => {
@@ -550,6 +591,7 @@ const App = () => {
                             importPreview={rosterImportPreview ? {
                                 incomingCount: pendingRosterImport?.incoming.length ?? 0,
                                 failedCount: pendingRosterImport?.failedLines.length ?? 0,
+                                avoidedWarningCount: pendingRosterImport?.avoidedRoleWarnings.length ?? 0,
                                 addedCount: rosterImportPreview.addedCount,
                                 updatedCount: rosterImportPreview.updatedCount,
                                 unchangedCount: rosterImportPreview.unchangedCount,
@@ -559,6 +601,8 @@ const App = () => {
                             onCancelImport={() => setPendingRosterImport(null)}
                             failedParses={failedParses}
                             setFailedParses={setFailedParses}
+                            avoidedRoleWarnings={avoidedRoleWarnings}
+                            setAvoidedRoleWarnings={setAvoidedRoleWarnings}
                             isCollapsed={isInputCollapsed}
                             summary={inputSummary}
                             onExpand={() => setIsInputCollapsed(false)}

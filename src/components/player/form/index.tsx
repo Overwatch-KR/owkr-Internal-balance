@@ -19,6 +19,7 @@ import {
 import type { Player } from '../../../types';
 import type { RosterImportMode } from '../../../utils/player';
 import type { PlayerInputMode, PlayerInputs } from '../../../hooks/use-player-input';
+import type { AvoidedRoleWarning } from '../../../utils/parser';
 import TierSelect from './tier-select';
 import ParticipantChecker from './participant-checker';
 
@@ -27,6 +28,7 @@ export type { PlayerInputMode } from '../../../hooks/use-player-input';
 interface RosterImportPreview {
     incomingCount: number;
     failedCount: number;
+    avoidedWarningCount: number;
     addedCount: number;
     updatedCount: number;
     unchangedCount: number;
@@ -48,6 +50,8 @@ interface PlayerFormProps {
     onCancelImport: () => void;
     failedParses: string[];
     setFailedParses: React.Dispatch<React.SetStateAction<string[]>>;
+    avoidedRoleWarnings: AvoidedRoleWarning[];
+    setAvoidedRoleWarnings: React.Dispatch<React.SetStateAction<AvoidedRoleWarning[]>>;
     isCollapsed: boolean;
     summary: string;
     onExpand: () => void;
@@ -76,6 +80,8 @@ const PlayerForm = ({
     onCancelImport,
     failedParses,
     setFailedParses,
+    avoidedRoleWarnings,
+    setAvoidedRoleWarnings,
     isCollapsed,
     summary,
     onExpand,
@@ -92,8 +98,8 @@ const PlayerForm = ({
         : { duration: 0.16, ease: [0.22, 1, 0.36, 1] as const };
     const collapsedMessage = isEditing
         ? `참가자 수정 중 · ${inputs.discordName || inputs.name}`
-        : failedParses.length > 0
-            ? `읽지 못한 항목 ${failedParses.length}명 확인 필요`
+        : failedParses.length > 0 || avoidedRoleWarnings.length > 0
+            ? `입력 항목 ${failedParses.length + avoidedRoleWarnings.length}명 확인 필요`
             : summary || '참가자 입력이 접혀 있습니다';
 
     React.useEffect(() => {
@@ -115,7 +121,7 @@ const PlayerForm = ({
             <div className="flex min-h-14 items-center gap-3 px-4 py-3">
                 <div className="flex min-w-0 flex-1 items-center gap-3">
                     {isCollapsed ? (
-                        failedParses.length > 0 ? (
+                        failedParses.length > 0 || avoidedRoleWarnings.length > 0 ? (
                             <AlertCircle size={17} className="shrink-0 text-amber-400" aria-hidden="true" />
                         ) : isEditing ? (
                             <Pencil size={17} className="shrink-0 text-cyan-300" aria-hidden="true" />
@@ -307,6 +313,11 @@ const PlayerForm = ({
                                                 읽지 못한 {importPreview.failedCount}명은 적용 후 직접 확인해야 합니다.
                                             </p>
                                         )}
+                                        {importPreview.avoidedWarningCount > 0 && (
+                                            <p className="mt-2.5 text-xs text-rose-300">
+                                                비선호가 여러 개인 {importPreview.avoidedWarningCount}명은 하나만 유지되며 적용 후 별도로 표시됩니다.
+                                            </p>
+                                        )}
 
                                         <div className="mt-3 grid gap-2">
                                             <button
@@ -439,6 +450,50 @@ const PlayerForm = ({
                                 mentionText={participantMentions}
                                 setMentionText={setParticipantMentions}
                             />
+                        )}
+
+                        {avoidedRoleWarnings.length > 0 && (
+                            <div className="mt-5 rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 animate-fade-in" role="status" aria-live="polite">
+                                <div className="mb-2 flex items-center gap-2">
+                                    <AlertCircle size={14} className="text-rose-400" aria-hidden="true" />
+                                    <span className="text-sm font-medium text-rose-300">
+                                        비선호 중복 확인 ({avoidedRoleWarnings.length}명)
+                                    </span>
+                                </div>
+                                <p className="mb-3 text-xs leading-relaxed text-slate-400">
+                                    비선호는 한 역할만 허용됩니다. 아래 참가자는 먼저 입력된 비선호 하나만 유지했으니 참가자 목록에서 수정해 주세요.
+                                </p>
+                                <div className="space-y-2">
+                                    {avoidedRoleWarnings.map((warning) => {
+                                        const roleLabel = warning.keptRole === 'TANK'
+                                            ? '탱커'
+                                            : warning.keptRole === 'DPS' ? '딜러' : '힐러';
+                                        const displayName = warning.discordName || warning.playerName;
+
+                                        return (
+                                            <div
+                                                key={warning.playerName}
+                                                className="flex items-center justify-between gap-2 rounded-lg bg-surface/50 px-3 py-2"
+                                            >
+                                                <span className="min-w-0 text-xs text-slate-300">
+                                                    <strong className="font-medium text-rose-200">{displayName}</strong>
+                                                    {' · '}{warning.avoidedRoleCount}개 감지, {roleLabel}만 유지
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setAvoidedRoleWarnings(previous => (
+                                                        previous.filter(item => item.playerName !== warning.playerName)
+                                                    ))}
+                                                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-rose-500/10 hover:text-rose-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/70"
+                                                    aria-label={`${displayName} 비선호 중복 안내 닫기`}
+                                                >
+                                                    <X size={14} aria-hidden="true" />
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
                         )}
 
                         {/* Failed Parses Section */}

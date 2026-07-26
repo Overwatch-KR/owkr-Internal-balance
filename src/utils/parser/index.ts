@@ -216,7 +216,7 @@ const extractEmojiInfo = (text: string): { cleanText: string; emojiRoles: ('TANK
  * @param line - 파싱할 한 줄의 텍스트
  * @returns Player 객체 또는 파싱 실패 시 null
  */
-export const parseLineToPlayer = (line: string, discordName?: string): Player | null => {
+const parseRawLineToPlayer = (line: string, discordName?: string): Player | null => {
     // "마이크x" 또는 설명 앞의 독립된 X 표기를 마이크 미사용으로 처리한다.
     const trimmedLine = line.trim();
     const noMic = /마이크\s*[:：]?\s*x/i.test(trimmedLine)
@@ -388,7 +388,7 @@ export const parseLineToPlayer = (line: string, discordName?: string): Player | 
         return null;
     }
 
-    return normalizePlayerRolePreferences({
+    return {
         id: Date.now() + Math.random(),
         name,
         discordName: discordName?.trim() || undefined,
@@ -396,7 +396,15 @@ export const parseLineToPlayer = (line: string, discordName?: string): Player | 
         dps,
         sup,
         noMic
-    });
+    };
+};
+
+/**
+ * @description 한 줄 입력의 비선호 역할을 하나로 제한해 플레이어를 반환한다.
+ */
+export const parseLineToPlayer = (line: string, discordName?: string): Player | null => {
+    const player = parseRawLineToPlayer(line, discordName);
+    return player ? normalizePlayerRolePreferences(player) : null;
 };
 
 /**
@@ -464,7 +472,38 @@ const extractDiscordName = (line: string): string | null => {
 export interface ParseResult {
     players: Player[];
     failedLines: string[];
+    avoidedRoleWarnings: AvoidedRoleWarning[];
 }
+
+export interface AvoidedRoleWarning {
+    playerName: string;
+    discordName?: string;
+    avoidedRoleCount: number;
+    keptRole: Role;
+}
+
+const ROLE_ENTRIES = [
+    ['TANK', 'tank'],
+    ['DPS', 'dps'],
+    ['SUPPORT', 'sup'],
+] as const;
+
+/**
+ * @description 비선호가 여러 개인 원본 플레이어에서 자동 보정 안내 정보를 만든다.
+ */
+const createAvoidedRoleWarning = (player: Player): AvoidedRoleWarning | null => {
+    const avoidedRoles = ROLE_ENTRIES
+        .filter(([, rankKey]) => player[rankKey].isAvoided)
+        .map(([role]) => role);
+    if (avoidedRoles.length <= 1) return null;
+
+    return {
+        playerName: player.name,
+        discordName: player.discordName,
+        avoidedRoleCount: avoidedRoles.length,
+        keptRole: avoidedRoles[0],
+    };
+};
 
 /**
  * @description 채팅 로그에서 유효한 라인만 골라 Player 배열을 만든다.
@@ -475,6 +514,7 @@ export const parseMultipleLines = (text: string): ParseResult => {
     const lines = text.split('\n');
     const players: Player[] = [];
     const failedLines: string[] = [];
+    const avoidedRoleWarnings: AvoidedRoleWarning[] = [];
     const seenNames = new Set<string>();
     let pendingDiscordName: string | undefined;
 
@@ -512,10 +552,13 @@ export const parseMultipleLines = (text: string): ParseResult => {
                 if (tierLines.length > 0) {
                     // 줄바꿈 입력은 역할 순서 보존을 위해 슬래시로 합친다.
                     const combinedLine = `${nameOnly} ${tierLines.join(' / ')}`;
-                    const player = parseLineToPlayer(combinedLine, playerDiscordName);
+                    const rawPlayer = parseRawLineToPlayer(combinedLine, playerDiscordName);
+                    const warning = rawPlayer ? createAvoidedRoleWarning(rawPlayer) : null;
+                    const player = rawPlayer ? normalizePlayerRolePreferences(rawPlayer) : null;
                     const normalizedName = player?.name.toLowerCase();
                     if (player && normalizedName && !seenNames.has(normalizedName)) {
                         players.push(player);
+                        if (warning) avoidedRoleWarnings.push(warning);
                         seenNames.add(normalizedName);
                     } else if (!seenNames.has(nameOnly.toLowerCase())) {
                         // 파싱 실패 - 닉네임만 추출해서 실패 목록에 추가
@@ -533,10 +576,13 @@ export const parseMultipleLines = (text: string): ParseResult => {
             }
 
             // 일반적인 한 줄 파싱
-            const player = parseLineToPlayer(line, playerDiscordName);
+            const rawPlayer = parseRawLineToPlayer(line, playerDiscordName);
+            const warning = rawPlayer ? createAvoidedRoleWarning(rawPlayer) : null;
+            const player = rawPlayer ? normalizePlayerRolePreferences(rawPlayer) : null;
             const normalizedName = player?.name.toLowerCase();
             if (player && normalizedName && !seenNames.has(normalizedName)) {
                 players.push(player);
+                if (warning) avoidedRoleWarnings.push(warning);
                 seenNames.add(normalizedName);
             } else {
                 // 파싱 실패 - 닉네임 추출 시도
@@ -550,5 +596,5 @@ export const parseMultipleLines = (text: string): ParseResult => {
         }
     }
 
-    return { players, failedLines };
+    return { players, failedLines, avoidedRoleWarnings };
 };

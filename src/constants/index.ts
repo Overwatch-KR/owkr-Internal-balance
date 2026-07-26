@@ -37,15 +37,15 @@ export const TIER_LABEL_MAP: Record<Tier, string> = {
 /**
  * @description 사용 가이드에서 실제 참가자 명단을 구성하는 10명 예시 데이터.
  */
-export const SAMPLE_ROSTER = `Alpha#1001 다3/플2?/플3?
+export const SAMPLE_ROSTER = `Alpha#1001 다3!/플2?/플3
 Bravo#1002 플1/다4!/플2
-Charlie#1003 플3/다2/골1
-Delta#1004 다5/플1?/플2?
-Echo#1005 플2/다3/다4
-Foxtrot#1006 골1/플2/다3
+Charlie#1003 플3/다2?/골1
+Delta#1004 다5!/플1?/플2
+Echo#1005 플2/다3?/다4
+Foxtrot#1006 골1/플2?/다3
 Golf#1007 플4/플3/다1
-Hotel#1008 다4/플2?/플1?
-India#1009 플1?/다5?/미배치
+Hotel#1008 다4!/플2?/플1
+India#1009 플1/다5?/미배치!
 Juliet#1010 다2/플4/플2 마이크x`;
 
 /**

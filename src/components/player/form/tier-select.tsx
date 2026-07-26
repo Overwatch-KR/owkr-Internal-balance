@@ -4,6 +4,7 @@ import { TIER_LABEL_MAP, TIER_OPTIONS } from '../../../constants';
 import type { PlayerInputs } from '../../../hooks/use-player-input';
 import type { Tier } from '../../../types';
 import { normalizeRolePreferences } from '../../../utils/role-preference';
+import type { Role } from '../../../types';
 import { getTierImage } from '../../../utils/tier';
 
 interface TierSelectProps {
@@ -15,12 +16,15 @@ interface TierSelectProps {
     setInputs: React.Dispatch<React.SetStateAction<PlayerInputs>>;
 }
 
-const normalizeInputPreferences = (inputs: PlayerInputs): PlayerInputs => {
+const normalizeInputPreferences = (
+    inputs: PlayerInputs,
+    preferredAvoidedRole?: Role,
+): PlayerInputs => {
     const preferences = normalizeRolePreferences({
         TANK: { isPreferred: inputs.tPref, isAvoided: inputs.tAvoid },
         DPS: { isPreferred: inputs.dPref, isAvoided: inputs.dAvoid },
         SUPPORT: { isPreferred: inputs.sPref, isAvoided: inputs.sAvoid },
-    });
+    }, preferredAvoidedRole);
 
     return {
         ...inputs,
@@ -38,6 +42,7 @@ const TierSelect = ({ prefix, label, prefKey, avoidKey, inputs, setInputs }: Tie
     const divKey = `${prefix}Div` as 'tDiv' | 'dDiv' | 'sDiv';
     const currentTier = inputs[tierKey];
     const isUnranked = currentTier === 'UNRANKED';
+    const role: Role = prefix === 't' ? 'TANK' : prefix === 'd' ? 'DPS' : 'SUPPORT';
     const tierImg = getTierImage(currentTier);
 
     const togglePref = () => {
@@ -49,11 +54,14 @@ const TierSelect = ({ prefix, label, prefKey, avoidKey, inputs, setInputs }: Tie
     };
 
     const toggleAvoid = () => {
-        setInputs(prev => normalizeInputPreferences({
-            ...prev,
-            [avoidKey]: !prev[avoidKey],
-            [prefKey]: false,
-        }));
+        setInputs((prev) => {
+            const willAvoid = !prev[avoidKey];
+            return normalizeInputPreferences({
+                ...prev,
+                [avoidKey]: willAvoid,
+                [prefKey]: false,
+            }, willAvoid ? role : undefined);
+        });
     };
 
     return (

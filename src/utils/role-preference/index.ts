@@ -8,24 +8,25 @@ interface RolePreference {
 const ROLES: Role[] = ['TANK', 'DPS', 'SUPPORT'];
 
 /**
- * @description 두 역할이 비선호일 때 남은 역할을 선호로 정규화한다.
+ * @description 비선호 역할을 하나로 제한하고 우선 역할이 있으면 해당 역할을 유지한다.
  */
 export const normalizeRolePreferences = <T extends RolePreference>(
     preferences: Record<Role, T>,
+    preferredAvoidedRole?: Role,
 ): Record<Role, T> => {
-    const remainingRoles = ROLES.filter(role => !preferences[role].isAvoided);
-    if (remainingRoles.length !== 1) return preferences;
+    const avoidedRoles = ROLES.filter(role => preferences[role].isAvoided);
+    if (avoidedRoles.length <= 1) return preferences;
 
-    const remainingRole = remainingRoles[0];
-    if (preferences[remainingRole].isPreferred) return preferences;
+    const keptRole = preferredAvoidedRole && avoidedRoles.includes(preferredAvoidedRole)
+        ? preferredAvoidedRole
+        : avoidedRoles[0];
 
-    return {
-        ...preferences,
-        [remainingRole]: {
-            ...preferences[remainingRole],
-            isPreferred: true,
-        },
-    };
+    return Object.fromEntries(ROLES.map(role => [
+        role,
+        role === keptRole
+            ? preferences[role]
+            : { ...preferences[role], isAvoided: false },
+    ])) as Record<Role, T>;
 };
 
 /**

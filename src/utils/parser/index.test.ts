@@ -78,9 +78,9 @@ describe('가이드 예시 명단', () => {
         expect(result.players.at(-1)?.noMic).toBe(true);
         expect(ranks).toHaveLength(30);
         expect(playersWithPreference).toHaveLength(5);
-        expect(playersWithAvoidance).toHaveLength(4);
+        expect(playersWithAvoidance).toHaveLength(7);
         expect(playersWithUnrankedRole).toHaveLength(1);
-        expect(playersWithoutIntent).toHaveLength(5);
+        expect(playersWithoutIntent).toHaveLength(2);
     });
 
     it('예시 매칭 결과에서 배정 예외 3종의 대상이 실제로 생긴다', () => {
@@ -97,10 +97,17 @@ describe('가이드 예시 명단', () => {
 
 describe('parseMultipleLines', () => {
     it('디스코드 헤더, 설명, 예상 티어와 마이크 표기를 함께 파싱한다', () => {
-        const { players, failedLines } = parseMultipleLines(RECENT_PARTICIPANTS);
+        const { players, failedLines, avoidedRoleWarnings } = parseMultipleLines(RECENT_PARTICIPANTS);
 
         expect(failedLines).toEqual([]);
         expect(players).toHaveLength(19);
+        expect(avoidedRoleWarnings).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                playerName: 'zzuzzu#31457',
+                avoidedRoleCount: 2,
+                keptRole: 'TANK',
+            }),
+        ]));
 
         const byBattleTag = new Map(players.map((player) => [player.name, player]));
         expect(byBattleTag.get('뾱뾱이#31226')).toMatchObject({
@@ -128,20 +135,20 @@ describe('parseMultipleLines', () => {
         expect(byBattleTag.get('zzuzzu#31457')).toMatchObject({
             discordName: '뽕뽕',
             tank: { tier: 'PLATINUM', div: 3, isAvoided: true },
-            dps: { tier: 'GOLD', div: 3, isAvoided: true },
+            dps: { tier: 'GOLD', div: 3, isAvoided: false },
             sup: { tier: 'MASTER', div: 4, isPreferred: true },
         });
     });
 });
 
 describe('parseLineToPlayer', () => {
-    it('두 포지션이 비선호이면 남은 포지션을 선호로 변경한다', () => {
+    it('두 포지션이 비선호이면 첫 번째 비선호만 유지한다', () => {
         const player = parseLineToPlayer('Tester#1234 다3? / 플2? / 골1');
 
         expect(player).toMatchObject({
             tank: { isPreferred: false, isAvoided: true },
-            dps: { isPreferred: false, isAvoided: true },
-            sup: { isPreferred: true, isAvoided: false },
+            dps: { isPreferred: false, isAvoided: false },
+            sup: { isPreferred: false, isAvoided: false },
         });
     });
 });
