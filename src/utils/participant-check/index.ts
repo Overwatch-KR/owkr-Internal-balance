@@ -11,11 +11,25 @@ export interface ParticipantCheckResult {
  */
 const normalizeParticipantIdentity = (value: string): string => value
     .normalize('NFKC')
+    .replace(/[\u200B-\u200D\u2060\uFEFF]/g, '')
     .replace(/\\([_*~`])/g, '$1')
     .replace(/^[\s@*]+|[\s*,，、;]+$/g, '')
     .replace(/\s+/g, ' ')
     .trim()
     .toLocaleLowerCase('ko-KR');
+
+/**
+ * @description 디스코드 이름과 예전 숫자 태그 표기의 차이를 흡수하는 대조용 별칭을 만든다.
+ */
+const getParticipantIdentityVariants = (value: string): string[] => {
+    const normalized = normalizeParticipantIdentity(value);
+    if (!normalized) return [];
+
+    const withoutDiscriminator = normalized.replace(/#\d{4,}$/, '').trim();
+    return withoutDiscriminator && withoutDiscriminator !== normalized
+        ? [normalized, withoutDiscriminator]
+        : [normalized];
+};
 
 /**
  * @description 굵은 글씨 또는 일반 텍스트로 복사된 디스코드 멘션에서 표시 이름을 추출한다.
@@ -48,28 +62,32 @@ export const compareMentionedParticipants = (
     players: Player[],
 ): ParticipantCheckResult => {
     const mentionedNames = extractMentionedParticipantNames(text);
-    const enteredIdentities = new Set<string>();
-
-    for (const player of players) {
-        const identities = [
+    const playerIdentities = players.map((player) => {
+        const identities = new Set([
             player.discordName,
             player.name,
             player.name.split('#')[0],
-        ];
+        ].flatMap(identity => identity ? getParticipantIdentityVariants(identity) : []));
+        return { playerId: player.id, identities };
+    });
+    const matchedPlayerIds = new Set<number>();
+    const completedNames: string[] = [];
+    const missingNames: string[] = [];
 
-        for (const identity of identities) {
-            if (!identity) continue;
-            const normalizedIdentity = normalizeParticipantIdentity(identity);
-            if (normalizedIdentity) enteredIdentities.add(normalizedIdentity);
+    for (const name of mentionedNames) {
+        const mentionIdentities = getParticipantIdentityVariants(name);
+        const candidates = playerIdentities.filter(({ playerId, identities }) => (
+            !matchedPlayerIds.has(playerId)
+            && mentionIdentities.some(identity => identities.has(identity))
+        ));
+
+        if (candidates.length === 1) {
+            completedNames.push(name);
+            matchedPlayerIds.add(candidates[0].playerId);
+        } else {
+            missingNames.push(name);
         }
     }
-
-    const completedNames = mentionedNames.filter(name => (
-        enteredIdentities.has(normalizeParticipantIdentity(name))
-    ));
-    const missingNames = mentionedNames.filter(name => (
-        !enteredIdentities.has(normalizeParticipantIdentity(name))
-    ));
 
     return { mentionedNames, completedNames, missingNames };
 };

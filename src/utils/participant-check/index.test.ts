@@ -63,4 +63,38 @@ describe('compareMentionedParticipants', () => {
 
         expect(result.missingNames).toEqual([]);
     });
+
+    it('보이지 않는 문자와 예전 디스코드 숫자 태그 차이를 정규화한다', () => {
+        const players = [
+            createPlayer(1, 'Player#1234', '상\u200B만#5678'),
+        ];
+
+        const result = compareMentionedParticipants('**@상만**', players);
+
+        expect(result.completedNames).toEqual(['상만']);
+        expect(result.missingNames).toEqual([]);
+    });
+
+    it('한 참가자의 여러 별칭을 서로 다른 두 사람으로 중복 완료 처리하지 않는다', () => {
+        const players = [
+            createPlayer(1, 'PlayerOne#1234', '상만'),
+        ];
+
+        const result = compareMentionedParticipants('**@상만** **@PlayerOne**', players);
+
+        expect(result.completedNames).toEqual(['상만']);
+        expect(result.missingNames).toEqual(['PlayerOne']);
+    });
+
+    it('여러 참가자가 같은 디스코드 이름을 쓰면 임의의 한 사람으로 처리하지 않는다', () => {
+        const players = [
+            createPlayer(1, 'PlayerOne#1234', '상만'),
+            createPlayer(2, 'PlayerTwo#5678', '상만'),
+        ];
+
+        const result = compareMentionedParticipants('**@상만**', players);
+
+        expect(result.completedNames).toEqual([]);
+        expect(result.missingNames).toEqual(['상만']);
+    });
 });
