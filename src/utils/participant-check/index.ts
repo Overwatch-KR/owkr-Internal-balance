@@ -4,6 +4,7 @@ export interface ParticipantCheckResult {
     mentionedNames: string[];
     completedNames: string[];
     missingNames: string[];
+    unmatchedPlayers: Player[];
 }
 
 /**
@@ -55,7 +56,7 @@ export const extractMentionedParticipantNames = (text: string): string[] => {
 };
 
 /**
- * @description 멘션된 참가자를 현재 플레이어의 디스코드 이름과 배틀태그에 대조한다.
+ * @description 멘션과 현재 플레이어를 1:1 대조해 양쪽에서 일치하지 않는 참가자를 찾는다.
  */
 export const compareMentionedParticipants = (
     text: string,
@@ -89,5 +90,7 @@ export const compareMentionedParticipants = (
         }
     }
 
-    return { mentionedNames, completedNames, missingNames };
+    const unmatchedPlayers = players.filter(player => !matchedPlayerIds.has(player.id));
+
+    return { mentionedNames, completedNames, missingNames, unmatchedPlayers };
 };

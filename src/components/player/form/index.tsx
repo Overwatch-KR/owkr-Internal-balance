@@ -60,6 +60,7 @@ interface PlayerFormProps {
     onModeChange: (mode: PlayerInputMode) => void;
     isEditing: boolean;
     onCancelEdit: () => void;
+    onRemovePlayer: (playerId: number) => void;
 }
 
 /**
@@ -90,6 +91,7 @@ const PlayerForm = ({
     onModeChange,
     isEditing,
     onCancelEdit,
+    onRemovePlayer,
 }: PlayerFormProps) => {
     const reduceMotion = useReducedMotion();
     const inputScrollRef = React.useRef<HTMLDivElement>(null);
@@ -449,6 +451,7 @@ const PlayerForm = ({
                                 players={players}
                                 mentionText={participantMentions}
                                 setMentionText={setParticipantMentions}
+                                onRemovePlayer={onRemovePlayer}
                             />
                         )}
 

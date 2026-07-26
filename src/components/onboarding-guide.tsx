@@ -64,8 +64,8 @@ const START_GUIDE_STEPS: readonly GuideStep[] = [
         id: 'start-mentions',
         icon: ListChecks,
         target: '#participant-check-tab',
-        title: '참여 대조로 빠진 인원을 찾으세요',
-        description: '공지의 디스코드 멘션을 붙여넣으면 입력 완료 인원과 아직 입력하지 않은 사람을 구분합니다.',
+        title: '참여 대조로 명단 오류를 찾으세요',
+        description: '공지의 디스코드 멘션을 붙여넣으면 미입력자와 공지에 없는 명단 참가자를 함께 찾아 바로 정리할 수 있습니다.',
     },
     {
         id: 'start-roster',

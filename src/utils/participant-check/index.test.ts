@@ -48,6 +48,7 @@ describe('compareMentionedParticipants', () => {
         expect(result.mentionedNames).toEqual(['상만', '롤랑', '민성', '미누', '강아지']);
         expect(result.completedNames).toEqual(['상만', '롤랑', '미누']);
         expect(result.missingNames).toEqual(['민성', '강아지']);
+        expect(result.unmatchedPlayers).toEqual([]);
     });
 
     it('대소문자, 유니코드 폭과 이름 내부 공백 차이를 정규화한다', () => {
@@ -84,6 +85,7 @@ describe('compareMentionedParticipants', () => {
 
         expect(result.completedNames).toEqual(['상만']);
         expect(result.missingNames).toEqual(['PlayerOne']);
+        expect(result.unmatchedPlayers).toEqual([]);
     });
 
     it('여러 참가자가 같은 디스코드 이름을 쓰면 임의의 한 사람으로 처리하지 않는다', () => {
@@ -96,5 +98,19 @@ describe('compareMentionedParticipants', () => {
 
         expect(result.completedNames).toEqual([]);
         expect(result.missingNames).toEqual(['상만']);
+        expect(result.unmatchedPlayers).toEqual(players);
+    });
+
+    it('공지에 없는 현재 명단 참가자를 오입력 후보로 반환한다', () => {
+        const players = [
+            createPlayer(1, 'PlayerOne#1234', '상만'),
+            createPlayer(2, 'WrongPlayer#5678', '잘못 추가한 사람'),
+        ];
+
+        const result = compareMentionedParticipants('**@상만**', players);
+
+        expect(result.completedNames).toEqual(['상만']);
+        expect(result.missingNames).toEqual([]);
+        expect(result.unmatchedPlayers).toEqual([players[1]]);
     });
 });

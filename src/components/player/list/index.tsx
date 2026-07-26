@@ -109,7 +109,7 @@ const PlayerList = ({ participants, waitlist, onEditPlayer, onRemovePlayer, onCl
     );
 
     return (
-        <section id="player-management" className="card flex min-h-[320px] scroll-mt-24 flex-1 flex-col overflow-hidden p-4 xl:min-h-0" aria-labelledby="player-management-title">
+        <section id="player-management" className="card flex min-h-[420px] scroll-mt-24 flex-1 flex-col overflow-hidden p-4 xl:min-h-[680px]" aria-labelledby="player-management-title">
             {/* Header */}
             <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-2">
