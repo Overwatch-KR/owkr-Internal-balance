@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { getTierScore } from '../constants';
 import type { Player, Rank, Tier } from '../types';
 import {
+    formatUserSheetChangeSummary,
+    getUserSheetChangeSummary,
     mergeDiscordPlayersIntoUserSheet,
     normalizeUserSheetBattleTag,
     parseUserSheetRows,
@@ -156,5 +158,52 @@ describe('validateUserSheetEntries', () => {
 
         expect(result.activeRows).toHaveLength(0);
         expect(result.errors.size).toBe(0);
+    });
+});
+
+describe('getUserSheetChangeSummary', () => {
+    const draft = (
+        id: string,
+        battleTag: string,
+        discordName = '유저',
+    ): UserSheetDraftEntry => ({
+        id,
+        discordName,
+        battleTag,
+        tank: '다3',
+        dps: '플2',
+        support: '마5',
+        note: '',
+    });
+
+    it('전체 인원수가 아닌 실제 추가·수정·삭제 건수를 계산한다', () => {
+        const summary = getUserSheetChangeSummary(
+            [
+                draft('1', 'Keep#1111'),
+                draft('2', 'Update#2222', '이전 이름'),
+                draft('3', 'Remove#3333'),
+            ],
+            [
+                draft('1', 'Keep#1111'),
+                draft('2', 'update#2222', '새 이름'),
+                draft('4', 'Add#4444'),
+            ],
+        );
+
+        expect(summary).toEqual({
+            addedCount: 1,
+            updatedCount: 1,
+            removedCount: 1,
+        });
+        expect(formatUserSheetChangeSummary(summary)).toBe(
+            '유저 시트를 저장했습니다. (추가 1명 · 수정 1명 · 삭제 1명)',
+        );
+    });
+
+    it('실제 변경이 없으면 변경 없음으로 안내한다', () => {
+        const entries = [draft('1', 'Keep#1111')];
+        const summary = getUserSheetChangeSummary(entries, entries);
+
+        expect(formatUserSheetChangeSummary(summary)).toBe('변경된 내용이 없습니다.');
     });
 });

@@ -39,6 +39,15 @@ const cleanStoredEntry = (entry: StoredUserSheetEntry): StoredUserSheetEntry => 
     support: sanitizeRank(entry.support),
 });
 
+const sortEntries = (entries: StoredUserSheetEntry[]): StoredUserSheetEntry[] => (
+    entries
+        .map(cleanStoredEntry)
+        .sort((a, b) => (
+            a.discordName.localeCompare(b.discordName, 'ko')
+            || a.battleTag.localeCompare(b.battleTag)
+        ))
+);
+
 const parseEntries = (
     value: unknown,
     currentEntries: StoredUserSheetEntry[],
@@ -88,19 +97,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const currentEntries = await redis.get<StoredUserSheetEntry[]>(USER_SHEET_KEY) ?? [];
         if (req.method === 'GET') {
             return res.status(200).json({
-                entries: currentEntries
-                    .map(cleanStoredEntry)
-                    .sort((a, b) => (
-                        a.discordName.localeCompare(b.discordName, 'ko')
-                        || a.battleTag.localeCompare(b.battleTag)
-                    )),
+                entries: sortEntries(currentEntries),
             });
         }
 
-        if (req.method === 'PUT') {
+        if (req.method === 'PUT' || req.method === 'PATCH') {
             if (!hasValidCsrfToken(req, user)) {
                 return res.status(403).json({ error: '유저 시트 저장 요청을 확인할 수 없습니다.' });
             }
+        }
+
+        if (req.method === 'PUT') {
             const body = req.body as { entries?: unknown } | undefined;
             const entries = parseEntries(
                 body?.entries,
@@ -116,7 +123,53 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             return res.status(200).json({ entries });
         }
 
-        res.setHeader('Allow', 'GET, PUT');
+        if (req.method === 'PATCH') {
+            const body = req.body as { entry?: unknown } | undefined;
+            if (!body?.entry || typeof body.entry !== 'object') {
+                return res.status(400).json({ error: '수정할 유저 정보를 확인해 주세요.' });
+            }
+            const source = body.entry as Partial<StoredUserSheetEntry>;
+            const targetIndex = currentEntries.findIndex(entry => entry.id === source.id);
+            if (targetIndex < 0) {
+                return res.status(404).json({
+                    error: '수정할 유저를 찾지 못했습니다. 시트를 새로고침해 주세요.',
+                });
+            }
+            const battleTag = sanitizeText(source.battleTag, 100);
+            if (!battleTag.includes('#')) {
+                return res.status(400).json({
+                    error: '배틀태그에 #과 숫자 태그를 포함해 주세요. 예: Player#1234',
+                });
+            }
+            const normalizedBattleTag = normalizeBattleTag(battleTag);
+            const isDuplicate = currentEntries.some((entry, index) => (
+                index !== targetIndex
+                && normalizeBattleTag(entry.battleTag) === normalizedBattleTag
+            ));
+            if (isDuplicate) {
+                return res.status(409).json({ error: '같은 배틀태그가 이미 등록되어 있습니다.' });
+            }
+
+            const current = currentEntries[targetIndex];
+            const nextEntry: StoredUserSheetEntry = {
+                ...current,
+                discordName: sanitizeText(source.discordName, 100),
+                battleTag,
+                tank: sanitizeRank(source.tank),
+                dps: sanitizeRank(source.dps),
+                support: sanitizeRank(source.support),
+                note: sanitizeText(source.note, MAX_NOTE_LENGTH),
+                updatedAt: Date.now(),
+                updatedByName: user.globalName ?? user.username,
+            };
+            const entries = currentEntries.map((entry, index) => (
+                index === targetIndex ? nextEntry : entry
+            ));
+            await redis.set(USER_SHEET_KEY, entries);
+            return res.status(200).json({ entries: sortEntries(entries) });
+        }
+
+        res.setHeader('Allow', 'GET, PUT, PATCH');
         return res.status(405).json({ error: '허용되지 않는 요청입니다.' });
     } catch (error) {
         return sendUnexpectedError(res, error, '유저 시트 서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.');

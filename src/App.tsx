@@ -719,9 +719,9 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
                             initialBattleTag={userSheet.selectedBattleTag}
                             isLoading={userSheet.isLoading}
                             participantBattleTags={participantBattleTags}
-                            onEntriesChange={(savedEntries) => {
+                            onEntriesChange={(savedEntries, message) => {
                                 userSheet.updateEntries(savedEntries);
-                                showToast('success', `유저 시트 ${savedEntries.length}명을 저장했습니다.`);
+                                showToast('success', message);
                             }}
                             onRetry={() => void userSheet.retry()}
                             onSaveError={(message) => {

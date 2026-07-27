@@ -15,6 +15,12 @@ export interface UserSheetEntry {
     updatedByName: string;
 }
 
+export interface UserSheetChangeSummary {
+    addedCount: number;
+    removedCount: number;
+    updatedCount: number;
+}
+
 export type UserSheetDraftEntry = Pick<
     UserSheetEntry,
     'id' | 'discordName' | 'battleTag' | 'tank' | 'dps' | 'support' | 'note'
@@ -98,6 +104,25 @@ export const saveUserSheet = async (
 };
 
 /**
+ * @description 상세 화면에서 수정한 유저 한 명만 저장해 다른 행의 동시 변경을 보존한다.
+ */
+export const updateUserSheetEntry = async (
+    entry: UserSheetDraftEntry,
+    csrfToken: string,
+): Promise<UserSheetEntry[]> => {
+    const body = await requestJson<{ entries: UserSheetEntry[] }>('/api/user-sheet', {
+        method: 'PATCH',
+        credentials: 'same-origin',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': csrfToken,
+        },
+        body: JSON.stringify({ entry }),
+    });
+    return body.entries;
+};
+
+/**
  * @description Google Sheets에서 복사한 6개 열을 유저 시트 행으로 변환한다.
  */
 export const parseUserSheetRows = (text: string): UserSheetDraftEntry[] => {
@@ -121,6 +146,60 @@ export const parseUserSheetRows = (text: string): UserSheetDraftEntry[] => {
 };
 
 export const normalizeUserSheetBattleTag = (value: string): string => value.trim().toLowerCase();
+
+const USER_SHEET_COMPARISON_FIELDS: ReadonlyArray<
+    keyof Pick<UserSheetDraftEntry, 'discordName' | 'battleTag' | 'tank' | 'dps' | 'support' | 'note'>
+> = ['discordName', 'battleTag', 'tank', 'dps', 'support', 'note'];
+
+/**
+ * @description 저장 전후의 실제 추가·수정·삭제 건수를 계산한다.
+ */
+export const getUserSheetChangeSummary = (
+    previousEntries: UserSheetDraftEntry[],
+    nextEntries: UserSheetDraftEntry[],
+): UserSheetChangeSummary => {
+    const previousByBattleTag = new Map(
+        previousEntries.map(entry => [normalizeUserSheetBattleTag(entry.battleTag), entry]),
+    );
+    const nextByBattleTag = new Map(
+        nextEntries.map(entry => [normalizeUserSheetBattleTag(entry.battleTag), entry]),
+    );
+    let addedCount = 0;
+    let removedCount = 0;
+    let updatedCount = 0;
+
+    for (const [battleTag, entry] of nextByBattleTag) {
+        const previous = previousByBattleTag.get(battleTag);
+        if (!previous) {
+            addedCount += 1;
+        } else if (USER_SHEET_COMPARISON_FIELDS.some(field => previous[field] !== entry[field])) {
+            updatedCount += 1;
+        }
+    }
+    for (const battleTag of previousByBattleTag.keys()) {
+        if (!nextByBattleTag.has(battleTag)) removedCount += 1;
+    }
+
+    return { addedCount, removedCount, updatedCount };
+};
+
+/**
+ * @description 시트 변경 건수를 저장 완료 토스트용 문장으로 바꾼다.
+ */
+export const formatUserSheetChangeSummary = ({
+    addedCount,
+    removedCount,
+    updatedCount,
+}: UserSheetChangeSummary): string => {
+    const changes = [
+        addedCount > 0 ? `추가 ${addedCount}명` : '',
+        updatedCount > 0 ? `수정 ${updatedCount}명` : '',
+        removedCount > 0 ? `삭제 ${removedCount}명` : '',
+    ].filter(Boolean);
+    return changes.length > 0
+        ? `유저 시트를 저장했습니다. (${changes.join(' · ')})`
+        : '변경된 내용이 없습니다.';
+};
 
 export interface UserSheetMergeResult {
     rows: UserSheetDraftEntry[];

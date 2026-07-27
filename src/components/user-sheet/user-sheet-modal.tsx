@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import {
+    formatUserSheetChangeSummary,
+    getUserSheetChangeSummary,
     normalizeUserSheetBattleTag,
     type UserSheetEntry,
 } from '../../utils/user-sheet';
@@ -27,7 +29,7 @@ interface UserSheetModalProps {
     isLoading: boolean;
     participantBattleTags: Set<string>;
     onClose: () => void;
-    onEntriesChange: (entries: UserSheetEntry[]) => void;
+    onEntriesChange: (entries: UserSheetEntry[], message: string) => void;
     onRetry: () => void;
     onSaveError: (message: string) => void;
 }
@@ -57,7 +59,7 @@ export function UserSheetModal({
         : entries[0];
     const [mode, setMode] = useState<UserSheetMode>('BROWSE');
     const [selectedId, setSelectedId] = useState<string | null>(initialEntry?.id ?? null);
-    const [editorTarget, setEditorTarget] = useState<'ALL' | 'NEW' | string>('ALL');
+    const [editorTarget, setEditorTarget] = useState<'ALL' | 'NEW'>('ALL');
     const [query, setQuery] = useState('');
     const selectedEntry = entries.find(entry => entry.id === selectedId)
         ?? (initialBattleTag
@@ -202,11 +204,15 @@ export function UserSheetModal({
                         appendEmptyRow={editorTarget === 'NEW'}
                         csrfToken={csrfToken}
                         entries={entries}
-                        focusBattleTag={editorTarget !== 'ALL' && editorTarget !== 'NEW' ? editorTarget : undefined}
                         onCancel={() => setMode('BROWSE')}
                         onSaveError={onSaveError}
                         onSaved={(savedEntries) => {
-                            onEntriesChange(savedEntries);
+                            onEntriesChange(
+                                savedEntries,
+                                formatUserSheetChangeSummary(
+                                    getUserSheetChangeSummary(entries, savedEntries),
+                                ),
+                            );
                             const previousIndex = selectedEntry
                                 ? entries.findIndex(entry => entry.id === selectedEntry.id)
                                 : -1;
@@ -323,20 +329,21 @@ export function UserSheetModal({
                         <div className={`${showMobileDetail ? 'flex' : 'hidden'} min-w-0 flex-1 flex-col sm:flex`}>
                             {selectedEntry ? (
                                 <UserSheetEntryView
+                                    key={selectedEntry.id}
+                                    csrfToken={csrfToken}
+                                    entries={entries}
                                     entry={selectedEntry}
                                     isCurrentParticipant={participantBattleTags.has(
                                         normalizeUserSheetBattleTag(selectedEntry.battleTag),
                                     )}
-                                    onEdit={() => {
-                                        setEditorTarget(selectedEntry.battleTag);
-                                        setMode('EDIT');
-                                    }}
+                                    onSaveError={onSaveError}
+                                    onSaved={onEntriesChange}
                                 />
                             ) : (
                                 <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
                                     <UserRound size={32} className="mb-3 text-slate-700" aria-hidden="true" />
                                     <p className="text-sm font-medium text-slate-400">조회할 유저를 선택해 주세요</p>
-                                    <p className="mt-1 text-xs text-slate-600">수정은 전체 시트 편집에서 할 수 있습니다.</p>
+                                    <p className="mt-1 text-xs text-slate-600">유저를 선택하면 상세 정보에서 바로 수정할 수 있습니다.</p>
                                 </div>
                             )}
                         </div>
