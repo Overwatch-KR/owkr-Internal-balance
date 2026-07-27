@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { getTierScore } from '../constants';
 import type { Player, Rank, Tier } from '../types';
 import {
+    addMissingPlayersToUserSheet,
     formatUserSheetChangeSummary,
     getUserSheetChangeSummary,
     mergeDiscordPlayersIntoUserSheet,
@@ -124,6 +125,38 @@ describe('mergeDiscordPlayersIntoUserSheet', () => {
         };
         const result = mergeDiscordPlayersIntoUserSheet([current], [player('Player#1234')]);
         expect(result.rows[0].discordName).toBe('유지할이름');
+    });
+});
+
+describe('addMissingPlayersToUserSheet', () => {
+    it('정상 Discord 유저 정보를 신규 시트 추가 API 형식으로 전송한다', async () => {
+        const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
+            JSON.stringify({ addedCount: 1, entries: [] }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ));
+
+        const result = await addMissingPlayersToUserSheet(
+            [player('New#1234', '새유저')],
+            'csrf-token',
+        );
+        const fetchCall = fetchMock.mock.calls[0];
+        fetchMock.mockRestore();
+
+        expect(result.addedCount).toBe(1);
+        expect(fetchCall).toEqual(['/api/user-sheet', expect.objectContaining({
+            method: 'POST',
+            headers: expect.objectContaining({ 'X-CSRF-Token': 'csrf-token' }),
+            body: JSON.stringify({
+                entries: [{
+                    discordName: '새유저',
+                    battleTag: 'New#1234',
+                    tank: '다3',
+                    dps: '플2',
+                    support: '마5',
+                    note: '',
+                }],
+            }),
+        })]);
     });
 });
 

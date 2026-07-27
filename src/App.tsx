@@ -14,6 +14,7 @@ import {
 } from './utils/player';
 import { normalizePlayerRolePreferences } from './utils/role-preference';
 import {
+    addMissingPlayersToUserSheet,
     normalizeUserSheetBattleTag,
 } from './utils/user-sheet';
 import { useOnboardingGuide } from './hooks/use-onboarding-guide';
@@ -44,27 +45,6 @@ const UserSheetModal = lazy(() => import('./components/user-sheet/user-sheet-mod
 })));
 
 const normalizePlayerName = (name: string) => name.trim().toLowerCase();
-
-const createRosterErrorDetails = (
-    failedLines: string[],
-    warnings: AvoidedRoleWarning[],
-): ErrorDetails => ({
-    title: '명단에서 확인이 필요한 항목이 있습니다',
-    description: [
-        failedLines.length > 0 ? `읽지 못한 항목 ${failedLines.length}개` : '',
-        warnings.length > 0 ? `비선호 역할이 두 개 이상인 참가자 ${warnings.length}명` : '',
-    ].filter(Boolean).join(' · '),
-    items: [
-        ...failedLines.map(line => `읽지 못함: ${line}`),
-        ...warnings.map((warning) => {
-            const playerLabel = warning.discordName
-                ? `${warning.discordName} (${warning.playerName})`
-                : warning.playerName;
-            return `추가 제외: ${playerLabel} · 비선호 역할 ${warning.avoidedRoleCount}개`;
-        }),
-    ],
-    hint: '빨간색으로 표시된 항목은 명단에 자동 추가되지 않습니다. 원문의 배틀태그와 티어를 수정하고, 비선호 역할은 한 개만 남긴 뒤 다시 가져와 주세요.',
-});
 
 interface MatchAppProps {
     csrfToken: string;
@@ -199,12 +179,12 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
             : willJoinWaitlist ? '정원 초과로 대기열에 추가했습니다.' : '플레이어를 추가했습니다.');
     };
 
-    const commitRosterImport = (
+    const commitRosterImport = async (
         incoming: Player[],
         failedLines: string[],
         importAvoidedRoleWarnings: AvoidedRoleWarning[],
         mode: RosterImportMode,
-    ) => {
+    ): Promise<void> => {
         const eligibleIncoming = getEligibleRosterPlayers(
             incoming,
             failedLines,
@@ -278,20 +258,36 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
         const rematchMessage = shouldClearMatchResult && reconciled.players.length >= 10
             ? ' · 팀을 다시 배정해 주세요'
             : '';
-        const toastMessage = `${mode === 'replace' ? '새 참여 명단을 적용했습니다' : '기존 명단에 추가했습니다'}${waitlistMessage}${failedMessage}${avoidedMessage}${rematchMessage}`;
-        if (failedLines.length > 0 || importAvoidedRoleWarnings.length > 0) {
+        let sheetAddedCount = 0;
+        try {
+            const sheetResult = await addMissingPlayersToUserSheet(eligibleIncoming, csrfToken);
+            sheetAddedCount = sheetResult.addedCount;
+            userSheet.updateEntries(sheetResult.entries);
+        } catch (error) {
+            const message = getErrorMessage(error, '유저 시트에 신규 참가자를 추가하지 못했습니다.');
             showDetailedError(
-                toastMessage,
-                createRosterErrorDetails(failedLines, importAvoidedRoleWarnings),
+                '참여 명단은 적용했지만 유저 시트는 갱신하지 못했습니다.',
+                {
+                    title: '유저 시트 자동 추가를 완료하지 못했습니다',
+                    description: message,
+                    hint: '참여 명단은 정상적으로 적용되었습니다. 유저 시트를 새로고침한 뒤 누락된 참가자를 다시 추가해 주세요.',
+                },
             );
-        } else {
-            showToast('success', toastMessage);
+            return;
         }
+
+        const sheetMessage = sheetAddedCount > 0
+            ? ` · 유저 시트에 신규 ${sheetAddedCount}명 추가`
+            : '';
+        const toastMessage = `${mode === 'replace' ? '새 참여 명단을 적용했습니다' : '기존 명단에 추가했습니다'}${waitlistMessage}${failedMessage}${avoidedMessage}${sheetMessage}${rematchMessage}`;
+        showToast(hasIssues ? 'info' : 'success', hasIssues
+            ? `${toastMessage} · 제외 항목은 입력창에서 바로 수정할 수 있습니다`
+            : toastMessage);
     };
 
     const applyPendingRosterImport = (mode: RosterImportMode) => {
         if (!pendingRosterImport) return;
-        commitRosterImport(
+        void commitRosterImport(
             pendingRosterImport.incoming,
             pendingRosterImport.failedLines,
             pendingRosterImport.avoidedRoleWarnings,
@@ -333,7 +329,7 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
             && failedLines.length === 0
             && importWarnings.length === 0
         ) {
-            commitRosterImport(parsedPlayers, failedLines, importWarnings, 'replace');
+            void commitRosterImport(parsedPlayers, failedLines, importWarnings, 'replace');
             return;
         }
 
@@ -343,14 +339,8 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
             avoidedRoleWarnings: importWarnings,
         });
         setIsInputCollapsed(false);
-        const previewMessage = `${parsedPlayers.length}명을 읽었습니다. 명단 변경 내용을 확인해 주세요.`;
-        if (failedLines.length > 0 || importWarnings.length > 0) {
-            showDetailedError(
-                previewMessage,
-                createRosterErrorDetails(failedLines, importWarnings),
-            );
-        } else {
-            showToast('success', previewMessage);
+        if (failedLines.length === 0 && importWarnings.length === 0) {
+            showToast('success', `${parsedPlayers.length}명을 읽었습니다. 명단 변경 내용을 확인해 주세요.`);
         }
     };
 

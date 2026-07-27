@@ -122,6 +122,37 @@ export const updateUserSheetEntry = async (
     return body.entries;
 };
 
+export interface AddMissingUserSheetPlayersResult {
+    addedCount: number;
+    entries: UserSheetEntry[];
+}
+
+/**
+ * @description Discord 명단에서 정상 파싱된 유저 중 시트에 없는 배틀태그만 추가한다.
+ */
+export const addMissingPlayersToUserSheet = async (
+    players: Player[],
+    csrfToken: string,
+): Promise<AddMissingUserSheetPlayersResult> => {
+    const entries = players.map(player => ({
+        discordName: player.discordName?.trim() ?? '',
+        battleTag: player.name.trim(),
+        tank: cleanUserSheetRank(formatRank(player.tank)),
+        dps: cleanUserSheetRank(formatRank(player.dps)),
+        support: cleanUserSheetRank(formatRank(player.sup)),
+        note: '',
+    }));
+    return requestJson<AddMissingUserSheetPlayersResult>('/api/user-sheet', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': csrfToken,
+        },
+        body: JSON.stringify({ entries }),
+    });
+};
+
 /**
  * @description Google Sheets에서 복사한 6개 열을 유저 시트 행으로 변환한다.
  */

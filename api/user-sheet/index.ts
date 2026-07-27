@@ -101,7 +101,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             });
         }
 
-        if (req.method === 'PUT' || req.method === 'PATCH') {
+        if (req.method === 'PUT' || req.method === 'PATCH' || req.method === 'POST') {
             if (!hasValidCsrfToken(req, user)) {
                 return res.status(403).json({ error: '유저 시트 저장 요청을 확인할 수 없습니다.' });
             }
@@ -121,6 +121,55 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }
             await redis.set(USER_SHEET_KEY, entries);
             return res.status(200).json({ entries });
+        }
+
+        if (req.method === 'POST') {
+            const body = req.body as { entries?: unknown } | undefined;
+            if (!Array.isArray(body?.entries) || body.entries.length > MAX_ENTRIES) {
+                return res.status(400).json({ error: '추가할 Discord 명단을 확인해 주세요.' });
+            }
+            const existingBattleTags = new Set(
+                currentEntries.map(entry => normalizeBattleTag(entry.battleTag)),
+            );
+            const entries = [...currentEntries];
+            const now = Date.now();
+            let addedCount = 0;
+
+            for (const raw of body.entries) {
+                if (!raw || typeof raw !== 'object') {
+                    return res.status(400).json({ error: '추가할 유저 정보를 확인해 주세요.' });
+                }
+                const source = raw as Partial<StoredUserSheetEntry>;
+                const battleTag = sanitizeText(source.battleTag, 100);
+                if (!battleTag.includes('#')) {
+                    return res.status(400).json({
+                        error: 'Discord 명단의 배틀태그 형식을 확인해 주세요.',
+                    });
+                }
+                const normalizedBattleTag = normalizeBattleTag(battleTag);
+                if (existingBattleTags.has(normalizedBattleTag)) continue;
+
+                entries.push({
+                    id: randomUUID(),
+                    discordName: sanitizeText(source.discordName, 100),
+                    battleTag,
+                    tank: sanitizeRank(source.tank),
+                    dps: sanitizeRank(source.dps),
+                    support: sanitizeRank(source.support),
+                    note: '',
+                    createdAt: now,
+                    updatedAt: now,
+                    updatedByName: user.globalName ?? user.username,
+                });
+                existingBattleTags.add(normalizedBattleTag);
+                addedCount += 1;
+            }
+
+            if (addedCount > 0) await redis.set(USER_SHEET_KEY, entries);
+            return res.status(200).json({
+                addedCount,
+                entries: sortEntries(entries),
+            });
         }
 
         if (req.method === 'PATCH') {
@@ -169,7 +218,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             return res.status(200).json({ entries: sortEntries(entries) });
         }
 
-        res.setHeader('Allow', 'GET, PUT, PATCH');
+        res.setHeader('Allow', 'GET, PUT, PATCH, POST');
         return res.status(405).json({ error: '허용되지 않는 요청입니다.' });
     } catch (error) {
         return sendUnexpectedError(res, error, '유저 시트 서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.');
