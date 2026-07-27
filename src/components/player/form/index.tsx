@@ -491,12 +491,21 @@ const PlayerForm = ({
                         )}
 
                         {avoidedRoleWarnings.length > 0 && (
-                            <div className="mt-5 rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 animate-fade-in" role="status" aria-live="polite">
-                                <div className="mb-2 flex items-center gap-2">
-                                    <AlertCircle size={14} className="text-rose-400" aria-hidden="true" />
-                                    <span className="text-sm font-medium text-rose-300">
-                                        비선호 중복 확인 ({avoidedRoleWarnings.length}명)
-                                    </span>
+                            <div className="mt-5 rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 animate-fade-in" role="alert">
+                                <div className="mb-2 flex items-center justify-between gap-3">
+                                    <div className="flex min-w-0 items-center gap-2">
+                                        <AlertCircle size={14} className="shrink-0 text-rose-400" aria-hidden="true" />
+                                        <span className="text-sm font-medium text-rose-300">
+                                            비선호 중복 확인 ({avoidedRoleWarnings.length}명)
+                                        </span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setAvoidedRoleWarnings([])}
+                                        className="min-h-8 shrink-0 rounded-md px-2 text-xs text-rose-200/70 transition-colors hover:bg-rose-500/10 hover:text-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/70"
+                                    >
+                                        모두 닫기
+                                    </button>
                                 </div>
                                 <p className="mb-3 text-xs leading-relaxed text-slate-400">
                                     비선호는 한 역할만 허용됩니다. 아래 항목은 임의로 보정하지 않고 명단에서 제외했습니다.
@@ -542,12 +551,21 @@ const PlayerForm = ({
 
                         {/* Failed Parses Section */}
                         {failedParses.length > 0 && (
-                            <div className="mt-5 rounded-xl border border-rose-500/30 bg-rose-500/[0.08] p-4 animate-fade-in" role="status" aria-live="polite">
-                                <div className="mb-3 flex items-center gap-2">
-                                    <AlertCircle size={14} className="text-rose-400" aria-hidden="true" />
-                                    <span className="text-sm font-medium text-rose-300">
-                                        읽지 못한 항목 ({failedParses.length}명)
-                                    </span>
+                            <div className="mt-5 rounded-xl border border-rose-500/30 bg-rose-500/[0.08] p-4 animate-fade-in" role="alert">
+                                <div className="mb-3 flex items-center justify-between gap-3">
+                                    <div className="flex min-w-0 items-center gap-2">
+                                        <AlertCircle size={14} className="shrink-0 text-rose-400" aria-hidden="true" />
+                                        <span className="text-sm font-medium text-rose-300">
+                                            읽지 못한 항목 ({failedParses.length}명)
+                                        </span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setFailedParses([])}
+                                        className="min-h-8 shrink-0 rounded-md px-2 text-xs text-rose-200/70 transition-colors hover:bg-rose-500/10 hover:text-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/70"
+                                    >
+                                        모두 닫기
+                                    </button>
                                 </div>
                                 <p className="mb-3 text-xs text-slate-400">
                                     배틀태그가 확인되는 항목은 누르면 수동 입력으로 옮겨집니다.

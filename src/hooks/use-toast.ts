@@ -33,7 +33,7 @@ export const useToast = () => {
         if (timerRef.current) window.clearTimeout(timerRef.current);
         timerRef.current = window.setTimeout(
             () => setToast(null),
-            action ? 8000 : 2800,
+            action ? 8000 : type === 'error' ? 6000 : 2800,
         );
     }, []);
 
