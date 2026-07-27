@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { SAMPLE_ROSTER } from '../../constants';
 import { balancePlayers } from '../balance';
-import { parseLineToPlayer, parseMultipleLines } from './index';
+import { reconcilePlayers } from '../player';
+import {
+    getEligibleRosterPlayers,
+    parseLineToPlayer,
+    parseMultipleLines,
+} from './index';
 
 const RECENT_PARTICIPANTS = `
 **바비호바**역할 아이콘, 막시밀리앙 — **어제 오후 8:20**
@@ -186,5 +191,34 @@ describe('parseLineToPlayer', () => {
         const player = parseLineToPlayer('Tester#1234 다3? / 플2? / 골1');
 
         expect(player).toBeNull();
+    });
+});
+
+describe('getEligibleRosterPlayers', () => {
+    it('적용 배열에 문제 유저가 남아 있어도 경고 배틀태그를 다시 제외한다', () => {
+        const existingPlayer = parseLineToPlayer('Existing#9999 골3 / 골3 / 골3');
+        const normalPlayer = parseLineToPlayer('Normal#1234 다3 / 플2 / 골1');
+        const rejectedPlayer = parseLineToPlayer('Rejected#5678 다3? / 플2 / 골1');
+        expect(existingPlayer).not.toBeNull();
+        expect(normalPlayer).not.toBeNull();
+        expect(rejectedPlayer).not.toBeNull();
+
+        const eligible = getEligibleRosterPlayers(
+            [normalPlayer!, rejectedPlayer!],
+            [],
+            [{
+                playerName: 'rejected#5678',
+                discordName: '문제 유저',
+                avoidedRoleCount: 2,
+                avoidedRoles: ['TANK', 'DPS'],
+            }],
+        );
+
+        const appended = reconcilePlayers([existingPlayer!], eligible, 'append');
+
+        expect(appended.players.map(player => player.name)).toEqual([
+            'Existing#9999',
+            'Normal#1234',
+        ]);
     });
 });

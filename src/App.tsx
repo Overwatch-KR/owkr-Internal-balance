@@ -1,7 +1,11 @@
 import { lazy, Suspense, useCallback, useMemo, useState } from 'react';
 import { AnimatePresence, MotionConfig } from 'framer-motion';
 import { SAMPLE_ROSTER, getTierScore } from './constants';
-import { parseMultipleLines, type AvoidedRoleWarning } from './utils/parser';
+import {
+    getEligibleRosterPlayers,
+    parseMultipleLines,
+    type AvoidedRoleWarning,
+} from './utils/parser';
 import { swapMatchResultPlayers } from './utils/balance';
 import {
     isMatchResultStale,
@@ -201,7 +205,12 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
         importAvoidedRoleWarnings: AvoidedRoleWarning[],
         mode: RosterImportMode,
     ) => {
-        const reconciled = reconcilePlayers(players, incoming, mode);
+        const eligibleIncoming = getEligibleRosterPlayers(
+            incoming,
+            failedLines,
+            importAvoidedRoleWarnings,
+        );
+        const reconciled = reconcilePlayers(players, eligibleIncoming, mode);
         const waitlistCount = Math.max(reconciled.players.length - 10, 0);
         const hasIssues = failedLines.length > 0
             || failedParses.length > 0
@@ -555,8 +564,15 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
     const waitlist = players.slice(10);
     const isReady = participants.length === 10;
     const isResultStale = result ? isMatchResultStale(result, participants) : false;
+    const eligiblePendingPlayers = pendingRosterImport
+        ? getEligibleRosterPlayers(
+            pendingRosterImport.incoming,
+            pendingRosterImport.failedLines,
+            pendingRosterImport.avoidedRoleWarnings,
+        )
+        : [];
     const rosterImportPreview = pendingRosterImport
-        ? reconcilePlayers(players, pendingRosterImport.incoming, 'replace')
+        ? reconcilePlayers(players, eligiblePendingPlayers, 'replace')
         : null;
     const userSheetByBattleTag = useMemo(() => new Map(
         userSheet.entries.map(entry => [normalizeUserSheetBattleTag(entry.battleTag), entry]),
@@ -618,7 +634,7 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
                             onPasteTextChange={updatePasteText}
                             handlePaste={handlePaste}
                             importPreview={rosterImportPreview ? {
-                                incomingCount: pendingRosterImport?.incoming.length ?? 0,
+                                incomingCount: eligiblePendingPlayers.length,
                                 issues: [
                                     ...(pendingRosterImport?.failedLines ?? []).map((line, index) => ({
                                         id: `failed-${index}-${line}`,

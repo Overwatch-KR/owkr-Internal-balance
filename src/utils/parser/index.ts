@@ -487,6 +487,27 @@ export interface AvoidedRoleWarning {
     avoidedRoles: Role[];
 }
 
+/**
+ * @description 파싱 문제에 연결된 배틀태그를 적용 직전에 다시 제외해 정상 참가자만 반환한다.
+ */
+export const getEligibleRosterPlayers = (
+    players: Player[],
+    failedLines: string[],
+    warnings: AvoidedRoleWarning[],
+): Player[] => {
+    const rejectedBattleTags = new Set(
+        warnings.map(warning => warning.playerName.trim().toLowerCase()),
+    );
+    for (const line of failedLines) {
+        const battleTag = line.match(/[^\s·()]+#\d{4,}/)?.[0];
+        if (battleTag) rejectedBattleTags.add(battleTag.trim().toLowerCase());
+    }
+
+    return players.filter(player => (
+        !rejectedBattleTags.has(player.name.trim().toLowerCase())
+    ));
+};
+
 const ROLE_ENTRIES = [
     ['TANK', 'tank'],
     ['DPS', 'dps'],
