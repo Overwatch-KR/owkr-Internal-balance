@@ -400,11 +400,12 @@ const parseRawLineToPlayer = (line: string, discordName?: string): Player | null
 };
 
 /**
- * @description 한 줄 입력의 비선호 역할을 하나로 제한해 플레이어를 반환한다.
+ * @description 한 줄 입력을 파싱하되 비선호 역할이 여러 개면 임의 보정 없이 거부한다.
  */
 export const parseLineToPlayer = (line: string, discordName?: string): Player | null => {
     const player = parseRawLineToPlayer(line, discordName);
-    return player ? normalizePlayerRolePreferences(player) : null;
+    if (!player || createAvoidedRoleWarning(player)) return null;
+    return normalizePlayerRolePreferences(player);
 };
 
 /**
@@ -462,7 +463,11 @@ const extractDiscordName = (line: string): string | null => {
         return accessibleName || null;
     }
 
-    const plainName = trimmed.split('—')[0].replace(/\*\*/g, '').trim();
+    const plainName = trimmed
+        .split('—')[0]
+        .replace(/\*\*/g, '')
+        .replace(/\s*\[[^\]]+\],?\s*$/, '')
+        .trim();
     return plainName || null;
 };
 
@@ -479,7 +484,7 @@ export interface AvoidedRoleWarning {
     playerName: string;
     discordName?: string;
     avoidedRoleCount: number;
-    keptRole: Role;
+    avoidedRoles: Role[];
 }
 
 const ROLE_ENTRIES = [
@@ -489,7 +494,7 @@ const ROLE_ENTRIES = [
 ] as const;
 
 /**
- * @description 비선호가 여러 개인 원본 플레이어에서 자동 보정 안내 정보를 만든다.
+ * @description 비선호가 여러 개인 원본 플레이어에서 가져오기 제외 안내 정보를 만든다.
  */
 const createAvoidedRoleWarning = (player: Player): AvoidedRoleWarning | null => {
     const avoidedRoles = ROLE_ENTRIES
@@ -501,7 +506,7 @@ const createAvoidedRoleWarning = (player: Player): AvoidedRoleWarning | null => 
         playerName: player.name,
         discordName: player.discordName,
         avoidedRoleCount: avoidedRoles.length,
-        keptRole: avoidedRoles[0],
+        avoidedRoles,
     };
 };
 
@@ -514,9 +519,16 @@ export const parseMultipleLines = (text: string): ParseResult => {
     const lines = text.split('\n');
     const players: Player[] = [];
     const failedLines: string[] = [];
+    const failedLineSet = new Set<string>();
     const avoidedRoleWarnings: AvoidedRoleWarning[] = [];
     const seenNames = new Set<string>();
     let pendingDiscordName: string | undefined;
+    const addFailedLine = (line: string) => {
+        const normalized = line.trim();
+        if (!normalized || failedLineSet.has(normalized)) return;
+        failedLines.push(normalized);
+        failedLineSet.add(normalized);
+    };
 
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
@@ -530,8 +542,18 @@ export const parseMultipleLines = (text: string): ParseResult => {
         // 디스코드 메타데이터 라인 제외 (역할 아이콘, 시간 등)
         if (line.includes('역할 아이콘') || line.includes('—')) continue;
 
+        const trimmedLine = line.trim();
+        const hasBattleTag = line.includes('#') && Boolean(line.match(/\d{4,}/));
+        if (!hasBattleTag && hasTierInfoOnly(line)) {
+            addFailedLine(pendingDiscordName
+                ? `${pendingDiscordName} · ${trimmedLine}`
+                : trimmedLine);
+            pendingDiscordName = undefined;
+            continue;
+        }
+
         // 닉네임#태그 패턴이 있는 줄 처리
-        if (line.includes('#') && line.match(/\d{4,}/)) {
+        if (hasBattleTag) {
             const playerDiscordName = pendingDiscordName;
             pendingDiscordName = undefined;
 
@@ -556,20 +578,22 @@ export const parseMultipleLines = (text: string): ParseResult => {
                     const warning = rawPlayer ? createAvoidedRoleWarning(rawPlayer) : null;
                     const player = rawPlayer ? normalizePlayerRolePreferences(rawPlayer) : null;
                     const normalizedName = player?.name.toLowerCase();
-                    if (player && normalizedName && !seenNames.has(normalizedName)) {
+                    if (warning && normalizedName && !seenNames.has(normalizedName)) {
+                        avoidedRoleWarnings.push(warning);
+                        seenNames.add(normalizedName);
+                    } else if (player && normalizedName && !seenNames.has(normalizedName)) {
                         players.push(player);
-                        if (warning) avoidedRoleWarnings.push(warning);
                         seenNames.add(normalizedName);
                     } else if (!seenNames.has(nameOnly.toLowerCase())) {
                         // 파싱 실패 - 닉네임만 추출해서 실패 목록에 추가
-                        failedLines.push(nameOnly);
+                        addFailedLine(nameOnly);
                         seenNames.add(nameOnly.toLowerCase());
                     }
                     i = j - 1; // 소비한 티어 줄만큼 스킵
                     continue;
                 } else if (!seenNames.has(nameOnly.toLowerCase())) {
                     // 닉네임만 있고 다음 줄에 티어 정보 없음
-                    failedLines.push(nameOnly);
+                    addFailedLine(nameOnly);
                     seenNames.add(nameOnly.toLowerCase());
                     continue;
                 }
@@ -580,16 +604,18 @@ export const parseMultipleLines = (text: string): ParseResult => {
             const warning = rawPlayer ? createAvoidedRoleWarning(rawPlayer) : null;
             const player = rawPlayer ? normalizePlayerRolePreferences(rawPlayer) : null;
             const normalizedName = player?.name.toLowerCase();
-            if (player && normalizedName && !seenNames.has(normalizedName)) {
+            if (warning && normalizedName && !seenNames.has(normalizedName)) {
+                avoidedRoleWarnings.push(warning);
+                seenNames.add(normalizedName);
+            } else if (player && normalizedName && !seenNames.has(normalizedName)) {
                 players.push(player);
-                if (warning) avoidedRoleWarnings.push(warning);
                 seenNames.add(normalizedName);
             } else {
                 // 파싱 실패 - 닉네임 추출 시도
                 const nameMatch = line.match(/([^\s]+#\d{4,})/);
                 const failedName = nameMatch?.[1];
                 if (failedName && !seenNames.has(failedName.toLowerCase())) {
-                    failedLines.push(failedName);
+                    addFailedLine(failedName);
                     seenNames.add(failedName.toLowerCase());
                 }
             }

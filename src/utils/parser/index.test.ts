@@ -50,6 +50,30 @@ zzuzzu#31457 플(배치X) ? / 골(배치X) ? / 마4! (복귀유저)
 둥댕#3222 (예상 다5)?/ 다3? / 마3!
 `;
 
+const MALFORMED_DISCORD_ROSTER = `
+강호의 도리역할 아이콘, 다이아 — 2026. 7. 26. 오후 10:08
+강호의도리#3110 플1? / 다1!/ 플1
+피리부는양역할 아이콘, 플래티넘 — 2026. 7. 26. 오후 10:08
+칠공본드#3150 골3?/플4?/다이야5!(키리코 아나 )
+wazn역할 아이콘, 플래티넘 — 2026. 7. 26. 오후 10:08
+X4zn#3805 탱! 골2/ 딜? 마3/ 힐 플5(예상)
+미누역할 아이콘, 브론즈 — 2026. 7. 26. 오후 10:08
+K200#31384 다4/ 플2!/ 다3?
+롤랑역할 아이콘, 다이아 — 2026. 7. 26. 오후 10:08
+roland#12831 골5? 다2! 다5!
+민성역할 아이콘, 다이아 — 2026. 7. 26. 오후 10:08
+아나진짜못함#3902 마4? / 그마4 / 챔4
+혁이역할 아이콘, {조식 매니아} — 2026. 7. 26. 오후 10:08
+혁이#32288 마5/그1!/마1
+재준역할 아이콘, 신참 — 2026. 7. 26. 오후 10:08
+대인기피증있어요#3166 마4? / 마4? / 마1 !
+달사탕 [오버워치], 역할 아이콘, Good Luck to You — 2026. 7. 26. 오후 10:08
+달사탕#31414 / 다3 / 다4 / 다3
+상만 [오버워치] —
+2026. 7. 26. 오후 10:08
+뿅뿅이 / 아이언 / 그마4 / 그마3
+`;
+
 describe('가이드 예시 명단', () => {
     it('선호·비선호·무표시·미배치가 섞인 참가자 10명을 파싱한다', () => {
         const result = parseMultipleLines(SAMPLE_ROSTER);
@@ -100,12 +124,13 @@ describe('parseMultipleLines', () => {
         const { players, failedLines, avoidedRoleWarnings } = parseMultipleLines(RECENT_PARTICIPANTS);
 
         expect(failedLines).toEqual([]);
-        expect(players).toHaveLength(19);
+        expect(players).toHaveLength(16);
+        expect(avoidedRoleWarnings).toHaveLength(3);
         expect(avoidedRoleWarnings).toEqual(expect.arrayContaining([
             expect.objectContaining({
                 playerName: 'zzuzzu#31457',
                 avoidedRoleCount: 2,
-                keptRole: 'TANK',
+                avoidedRoles: ['TANK', 'DPS'],
             }),
         ]));
 
@@ -116,10 +141,7 @@ describe('parseMultipleLines', () => {
             dps: { tier: 'MASTER', div: 2 },
             sup: { tier: 'GRANDMASTER', div: 5 },
         });
-        expect(byBattleTag.get('둥댕#3222')).toMatchObject({
-            discordName: '맹물',
-            tank: { tier: 'DIAMOND', div: 5, isAvoided: true },
-        });
+        expect(byBattleTag.has('둥댕#3222')).toBe(false);
         expect(byBattleTag.get('라솔메#3898')?.noMic).toBe(true);
         expect(byBattleTag.get('가면요루#3833')).toMatchObject({
             discordName: '에어맨이 쓰러지지 않아',
@@ -132,23 +154,37 @@ describe('parseMultipleLines', () => {
             dps: { tier: 'GOLD', div: 4, isAvoided: true },
             sup: { tier: 'SILVER', div: 1 },
         });
-        expect(byBattleTag.get('zzuzzu#31457')).toMatchObject({
-            discordName: '뽕뽕',
-            tank: { tier: 'PLATINUM', div: 3, isAvoided: true },
-            dps: { tier: 'GOLD', div: 3, isAvoided: false },
-            sup: { tier: 'MASTER', div: 4, isPreferred: true },
-        });
+        expect(byBattleTag.has('zzuzzu#31457')).toBe(false);
+    });
+
+    it('배틀태그가 없는 제출과 비선호 중복 참가자를 자동 추가하지 않는다', () => {
+        const result = parseMultipleLines(MALFORMED_DISCORD_ROSTER);
+
+        expect(result.players).toHaveLength(7);
+        expect(result.failedLines).toEqual([
+            '상만 · 뿅뿅이 / 아이언 / 그마4 / 그마3',
+        ]);
+        expect(result.avoidedRoleWarnings).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                playerName: '칠공본드#3150',
+                discordName: '피리부는양',
+                avoidedRoleCount: 2,
+            }),
+            expect.objectContaining({
+                playerName: '대인기피증있어요#3166',
+                discordName: '재준',
+                avoidedRoleCount: 2,
+            }),
+        ]));
+        expect(result.players.some(player => player.name === '칠공본드#3150')).toBe(false);
+        expect(result.players.some(player => player.name === '대인기피증있어요#3166')).toBe(false);
     });
 });
 
 describe('parseLineToPlayer', () => {
-    it('두 포지션이 비선호이면 첫 번째 비선호만 유지한다', () => {
+    it('두 포지션이 비선호이면 임의 보정하지 않고 거부한다', () => {
         const player = parseLineToPlayer('Tester#1234 다3? / 플2? / 골1');
 
-        expect(player).toMatchObject({
-            tank: { isPreferred: false, isAvoided: true },
-            dps: { isPreferred: false, isAvoided: false },
-            sup: { isPreferred: false, isAvoided: false },
-        });
+        expect(player).toBeNull();
     });
 });
