@@ -584,6 +584,7 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
         if (isLoggingOut) return;
         setIsLoggingOut(true);
         try {
+            userSheet.close();
             await logout();
         } catch (error) {
             showToast('error', getErrorMessage(error, '로그아웃하지 못했습니다. 다시 시도해 주세요.'));

@@ -145,6 +145,21 @@ export function UserSheetModal({
                                 목록
                             </button>
                         )}
+                        {mode === 'BROWSE' && (
+                            <button
+                                type="button"
+                                onClick={onRetry}
+                                disabled={isLoading}
+                                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg px-2.5 text-xs text-slate-400 hover:bg-white/5 hover:text-white disabled:cursor-wait disabled:opacity-50"
+                                aria-label="유저 시트 최신 데이터 불러오기"
+                                title="최신 데이터 불러오기"
+                            >
+                                {isLoading
+                                    ? <Loader2 size={15} className="animate-spin" aria-hidden="true" />
+                                    : <RefreshCcw size={15} aria-hidden="true" />}
+                                <span className="hidden md:inline">새로고침</span>
+                            </button>
+                        )}
                         <button
                             type="button"
                             onClick={onClose}
