@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { AlertCircle, Loader2, LockKeyhole, RefreshCcw, Save, Users } from 'lucide-react';
-import type { Player } from '../../../types';
 import {
     fetchPlayerNotes,
     savePlayerNote,
@@ -10,14 +9,14 @@ import {
 import { getErrorMessage } from '../../../utils/api';
 
 interface PlayerNoteEditorProps {
+    battleTag: string;
     csrfToken: string;
-    player: Player;
 }
 
 /**
  * @description BattleTag에 연결된 운영자 개인 메모와 관리자 공유 메모를 조회·저장한다.
  */
-const PlayerNoteEditor = ({ csrfToken, player }: PlayerNoteEditorProps) => {
+export const PlayerNoteEditor = ({ battleTag, csrfToken }: PlayerNoteEditorProps) => {
     const [visibility, setVisibility] = useState<NoteVisibility>('PRIVATE');
     const [privateNote, setPrivateNote] = useState<PlayerNote | null>(null);
     const [sharedNote, setSharedNote] = useState<PlayerNote | null>(null);
@@ -29,7 +28,7 @@ const PlayerNoteEditor = ({ csrfToken, player }: PlayerNoteEditorProps) => {
 
     useEffect(() => {
         let active = true;
-        void fetchPlayerNotes(player.name)
+        void fetchPlayerNotes(battleTag)
             .then((notes) => {
                 if (!active) return;
                 setPrivateNote(notes.privateNote);
@@ -47,7 +46,7 @@ const PlayerNoteEditor = ({ csrfToken, player }: PlayerNoteEditorProps) => {
         return () => {
             active = false;
         };
-    }, [player.name]);
+    }, [battleTag]);
 
     const selectVisibility = (next: NoteVisibility) => {
         setVisibility(next);
@@ -59,7 +58,7 @@ const PlayerNoteEditor = ({ csrfToken, player }: PlayerNoteEditorProps) => {
         setIsLoading(true);
         setLoadError(null);
         try {
-            const notes = await fetchPlayerNotes(player.name);
+            const notes = await fetchPlayerNotes(battleTag);
             setPrivateNote(notes.privateNote);
             setSharedNote(notes.sharedNote);
             setDraft(notes.privateNote?.content ?? '');
@@ -74,10 +73,10 @@ const PlayerNoteEditor = ({ csrfToken, player }: PlayerNoteEditorProps) => {
         setIsSaving(true);
         setMessage('');
         try {
-            await savePlayerNote(player.name, draft, visibility, csrfToken);
+            await savePlayerNote(battleTag, draft, visibility, csrfToken);
             const updatedNote = draft.trim()
                 ? {
-                    battleTag: player.name,
+                    battleTag,
                     content: draft.trim(),
                     visibility,
                     authorName: '',

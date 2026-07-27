@@ -3,6 +3,7 @@ import {
     AlertCircle,
     Loader2,
     MessageSquareText,
+    NotebookPen,
     Pencil,
     Save,
     Shield,
@@ -19,6 +20,7 @@ import {
 } from '../../utils/user-sheet';
 import { getErrorMessage } from '../../utils/api';
 import { BattleTagCopyButton } from '../player/battle-tag-copy-button';
+import { PlayerNoteEditor } from '../player/list/player-note-editor';
 
 interface UserSheetEntryViewProps {
     csrfToken: string;
@@ -259,6 +261,28 @@ export function UserSheetEntryView({
                         </p>
                     )}
                 </div>
+
+                <section
+                    className="mt-4 rounded-xl border border-violet-500/20 bg-violet-500/[0.035] p-4"
+                    aria-labelledby="user-sheet-operator-note-title"
+                >
+                    <div className="flex items-start gap-2">
+                        <NotebookPen size={15} className="mt-0.5 shrink-0 text-violet-300" aria-hidden="true" />
+                        <div>
+                            <h3 id="user-sheet-operator-note-title" className="text-xs font-medium text-violet-200">
+                                운영 메모
+                            </h3>
+                            <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                                나만 보는 개인 메모와 모든 관리자에게 보이는 공유 메모를 구분해 관리합니다.
+                            </p>
+                        </div>
+                    </div>
+                    <PlayerNoteEditor
+                        key={entry.battleTag}
+                        battleTag={entry.battleTag}
+                        csrfToken={csrfToken}
+                    />
+                </section>
             </div>
         </section>
     );

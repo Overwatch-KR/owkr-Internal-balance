@@ -149,7 +149,7 @@ const PlayerList = ({
                 </div>
             </div>
             {notePlayerId === player.id && (
-                <PlayerNoteEditor csrfToken={csrfToken} player={player} />
+                <PlayerNoteEditor battleTag={player.name} csrfToken={csrfToken} />
             )}
         </li>
         );
