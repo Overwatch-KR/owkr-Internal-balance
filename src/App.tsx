@@ -1,6 +1,5 @@
-import { useCallback, useState, useEffect, useRef } from 'react';
-import { BookOpen, Shuffle, RefreshCcw, Loader2 } from 'lucide-react';
-import { motion, AnimatePresence, MotionConfig } from 'framer-motion';
+import { lazy, Suspense, useCallback, useMemo, useState } from 'react';
+import { AnimatePresence, MotionConfig } from 'framer-motion';
 import { SAMPLE_ROSTER, getTierScore } from './constants';
 import { parseMultipleLines, type AvoidedRoleWarning } from './utils/parser';
 import { swapMatchResultPlayers } from './utils/balance';
@@ -10,107 +9,78 @@ import {
     syncMatchResultPlayerIdentities,
 } from './utils/player';
 import { normalizePlayerRolePreferences } from './utils/role-preference';
-import { setWithExpiry, getWithExpiry, removeItem, cleanupExpired } from './utils/storage';
-import { useBalance } from './hooks/use-balance';
+import {
+    normalizeUserSheetBattleTag,
+} from './utils/user-sheet';
 import { useOnboardingGuide } from './hooks/use-onboarding-guide';
 import { usePlayerInput } from './hooks/use-player-input';
 import { useToast } from './hooks/use-toast';
-import type { MatchResultData, Player, Role, SwapSource } from './types';
+import { useAuth, type AuthUser } from './hooks/use-auth';
+import { useMatchSession } from './hooks/use-match-session';
+import { useUserSheet } from './hooks/use-user-sheet';
+import { getErrorMessage } from './utils/api';
+import type { Player, Role, SwapSource } from './types';
 import type { RosterImportMode } from './utils/player';
 import PlayerForm from './components/player/form';
 import PlayerList from './components/player/list';
-import MatchResult from './components/match/result';
 import { OnboardingGuide } from './components/onboarding-guide';
 import { GuideResumePrompt } from './components/guide-resume-prompt';
 import { AppToast } from './components/app-toast';
+import LoginScreen from './components/auth/login-screen';
+import LoadingScreen from './components/common/loading-screen';
+import {
+    ErrorDetailsModal,
+    type ErrorDetails,
+} from './components/common/error-details-modal';
+import { AppHeader } from './components/layout/app-header';
+import { MatchResultPanel } from './components/match/match-result-panel';
 
-const STORAGE_KEYS = {
-    PLAYERS: 'owkr_players',
-    RESULT: 'owkr_result',
-    PARTICIPANT_MENTIONS: 'owkr_participant_mentions',
-};
-
-interface StoredMatchState {
-    result: MatchResultData;
-    alternatives: MatchResultData[];
-}
+const UserSheetModal = lazy(() => import('./components/user-sheet/user-sheet-modal').then(module => ({
+    default: module.UserSheetModal,
+})));
 
 const normalizePlayerName = (name: string) => name.trim().toLowerCase();
 
-const App = () => {
-    const [players, setPlayers] = useState<Player[]>(() => {
-        const savedPlayers = (getWithExpiry<Player[]>(STORAGE_KEYS.PLAYERS) || [])
-            .map(normalizePlayerRolePreferences);
-        return reconcilePlayers([], savedPlayers, 'replace').players;
-    });
-    const [participantMentions, setParticipantMentions] = useState(() => (
-        getWithExpiry<string>(STORAGE_KEYS.PARTICIPANT_MENTIONS) || ''
-    ));
-    const [initialMatchState] = useState<StoredMatchState | null>(() => {
-        const savedState = getWithExpiry<MatchResultData | StoredMatchState>(STORAGE_KEYS.RESULT);
-        if (!savedState) return null;
+const createRosterErrorDetails = (
+    failedLines: string[],
+    warnings: AvoidedRoleWarning[],
+): ErrorDetails => ({
+    title: '명단에서 확인이 필요한 항목이 있습니다',
+    description: [
+        failedLines.length > 0 ? `읽지 못한 항목 ${failedLines.length}개` : '',
+        warnings.length > 0 ? `비선호 역할이 두 개 이상인 참가자 ${warnings.length}명` : '',
+    ].filter(Boolean).join(' · '),
+    items: [
+        ...failedLines.map(line => `읽지 못함: ${line}`),
+        ...warnings.map((warning) => {
+            const playerLabel = warning.discordName
+                ? `${warning.discordName} (${warning.playerName})`
+                : warning.playerName;
+            return `추가 제외: ${playerLabel} · 비선호 역할 ${warning.avoidedRoleCount}개`;
+        }),
+    ],
+    hint: '빨간색으로 표시된 항목은 명단에 자동 추가되지 않습니다. 원문의 배틀태그와 티어를 수정하고, 비선호 역할은 한 개만 남긴 뒤 다시 가져와 주세요.',
+});
 
-        const savedResult = 'result' in savedState ? savedState.result : savedState;
-        const savedAlternatives = 'result' in savedState ? savedState.alternatives : [];
+interface MatchAppProps {
+    csrfToken: string;
+    logout: () => Promise<void>;
+    user: AuthUser;
+}
 
-        return {
-            result: syncMatchResultPlayerIdentities(savedResult, players),
-            alternatives: savedAlternatives.map(alternative => (
-                syncMatchResultPlayerIdentities(alternative, players)
-            )),
-        };
-    });
-    const initialParticipantsRef = useRef(players.slice(0, 10));
-
-    const { balanceTeams, result, setResult, alternatives, setAlternatives, isBalancing } = useBalance(
-        initialMatchState?.result ?? null,
-        initialMatchState?.alternatives ?? [],
-    );
-
-    const isMounted = useRef(false);
-
-    useEffect(() => {
-        // 앱 시작 시 만료된 데이터 정리
-        cleanupExpired();
-        isMounted.current = true;
-
-        if (initialMatchState) {
-            const initialParticipants = initialParticipantsRef.current;
-            const shouldGenerateAlternatives = initialMatchState.alternatives.length === 0
-                && initialParticipants.length === 10
-                && !isMatchResultStale(initialMatchState.result, initialParticipants);
-            if (shouldGenerateAlternatives) {
-                void balanceTeams(initialParticipants, { preserveResult: initialMatchState.result })
-                    .catch(() => undefined);
-            }
-        }
-    }, [balanceTeams, initialMatchState]);
-
-    useEffect(() => {
-        if (players.length > 0) {
-            setWithExpiry(STORAGE_KEYS.PLAYERS, players);
-        } else {
-            removeItem(STORAGE_KEYS.PLAYERS);
-        }
-    }, [players]);
-
-    useEffect(() => {
-        if (participantMentions.trim()) {
-            setWithExpiry(STORAGE_KEYS.PARTICIPANT_MENTIONS, participantMentions);
-        } else {
-            removeItem(STORAGE_KEYS.PARTICIPANT_MENTIONS);
-        }
-    }, [participantMentions]);
-
-    useEffect(() => {
-        if (!isMounted.current) return;
-
-        if (result) {
-            setWithExpiry<StoredMatchState>(STORAGE_KEYS.RESULT, { result, alternatives });
-        } else {
-            removeItem(STORAGE_KEYS.RESULT);
-        }
-    }, [alternatives, result]);
+const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
+    const {
+        alternatives,
+        balanceTeams,
+        isBalancing,
+        participantMentions,
+        players,
+        result,
+        setAlternatives,
+        setParticipantMentions,
+        setPlayers,
+        setResult,
+    } = useMatchSession(user.id);
 
     const {
         avoidedRoleWarnings,
@@ -137,12 +107,25 @@ const App = () => {
     } = usePlayerInput(players.length);
     const [swapSource, setSwapSource] = useState<SwapSource | null>(null);
     const [showAllRanks, setShowAllRanks] = useState(false);
+    const [isLoggingOut, setIsLoggingOut] = useState(false);
+    const [errorDetails, setErrorDetails] = useState<ErrorDetails | null>(null);
+    const userSheet = useUserSheet();
     const { dismissToast, showToast, toast } = useToast();
+    const showDetailedError = useCallback((message: string, details: ErrorDetails) => {
+        showToast('error', message, {
+            label: '자세히 보기',
+            onClick: () => setErrorDetails(details),
+        });
+    }, [showToast]);
 
     const addPlayer = () => {
         if (!inputs.name.trim()) {
             setIsInputCollapsed(false);
-            showToast('error', '배틀태그를 입력해주세요.');
+            showDetailedError('배틀태그를 입력해 주세요.', {
+                title: '참가자를 추가할 수 없습니다',
+                description: '참가자를 구분할 배틀태그가 비어 있습니다.',
+                hint: '배틀태그를 Player#1234 형식으로 입력한 뒤 다시 추가해 주세요.',
+            });
             return;
         }
         const normalizedName = normalizePlayerName(inputs.name);
@@ -151,7 +134,16 @@ const App = () => {
             && normalizePlayerName(player.name) === normalizedName
         ))) {
             setIsInputCollapsed(false);
-            showToast('error', '이미 추가된 플레이어입니다.');
+            const duplicate = players.find(player => (
+                player.id !== editingPlayerId
+                && normalizePlayerName(player.name) === normalizedName
+            ));
+            showDetailedError('이미 추가된 플레이어입니다.', {
+                title: '배틀태그가 중복되었습니다',
+                description: `${duplicate?.discordName ?? duplicate?.name ?? inputs.name} 참가자가 이미 명단에 있습니다.`,
+                items: [inputs.name.trim()],
+                hint: '기존 참가자 카드를 수정하거나, 입력한 배틀태그가 맞는지 확인해 주세요.',
+            });
             return;
         }
         const tTier = inputs.tTier;
@@ -162,7 +154,11 @@ const App = () => {
             : players.find(player => player.id === editingPlayerId);
         if (editingPlayerId !== null && !existingPlayer) {
             handleCancelEdit();
-            showToast('error', '수정할 참가자를 찾지 못했습니다.');
+            showDetailedError('수정할 참가자를 찾지 못했습니다.', {
+                title: '참가자 정보가 변경되었습니다',
+                description: '수정 중이던 참가자가 이미 삭제되었거나 명단이 갱신되었습니다.',
+                hint: '현재 참가자 목록에서 대상을 다시 선택해 주세요.',
+            });
             return;
         }
         const willJoinWaitlist = editingPlayerId === null && players.length >= 10;
@@ -273,10 +269,15 @@ const App = () => {
         const rematchMessage = shouldClearMatchResult && reconciled.players.length >= 10
             ? ' · 팀을 다시 배정해 주세요'
             : '';
-        showToast(
-            failedLines.length > 0 || importAvoidedRoleWarnings.length > 0 ? 'error' : 'success',
-            `${mode === 'replace' ? '새 참여 명단을 적용했습니다' : '기존 명단에 추가했습니다'}${waitlistMessage}${failedMessage}${avoidedMessage}${rematchMessage}`,
-        );
+        const toastMessage = `${mode === 'replace' ? '새 참여 명단을 적용했습니다' : '기존 명단에 추가했습니다'}${waitlistMessage}${failedMessage}${avoidedMessage}${rematchMessage}`;
+        if (failedLines.length > 0 || importAvoidedRoleWarnings.length > 0) {
+            showDetailedError(
+                toastMessage,
+                createRosterErrorDetails(failedLines, importAvoidedRoleWarnings),
+            );
+        } else {
+            showToast('success', toastMessage);
+        }
     };
 
     const applyPendingRosterImport = (mode: RosterImportMode) => {
@@ -291,7 +292,11 @@ const App = () => {
 
     const handlePaste = () => {
         if (!pasteText.trim()) {
-            showToast('error', '붙여넣을 디스코드 채팅이 없습니다.');
+            showDetailedError('붙여넣을 디스코드 채팅이 없습니다.', {
+                title: '가져올 명단이 비어 있습니다',
+                description: '채팅 붙여넣기 입력란에서 읽어낼 내용이 없습니다.',
+                hint: 'Discord에서 참가자 명단이 포함된 채팅을 복사해 입력란에 붙여넣어 주세요.',
+            });
             return;
         }
         const { players: parsedPlayers, failedLines, avoidedRoleWarnings: importWarnings } = parseMultipleLines(pasteText);
@@ -302,11 +307,23 @@ const App = () => {
             }
             setIsInputCollapsed(false);
             setPendingRosterImport(null);
-            showToast('error', '읽어낸 플레이어가 없습니다. 입력 형식을 확인해 주세요.');
+            showDetailedError(
+                '읽어낸 플레이어가 없습니다.',
+                {
+                    title: 'Discord 명단을 해석하지 못했습니다',
+                    description: '붙여넣은 내용에서 올바른 배틀태그와 세 역할 티어를 찾지 못했습니다.',
+                    items: failedLines,
+                    hint: 'Player#1234 다3/플2/마5 형식이 포함되어 있는지 확인해 주세요.',
+                },
+            );
             return;
         }
 
-        if (players.length === 0) {
+        if (
+            players.length === 0
+            && failedLines.length === 0
+            && importWarnings.length === 0
+        ) {
             commitRosterImport(parsedPlayers, failedLines, importWarnings, 'replace');
             return;
         }
@@ -317,10 +334,15 @@ const App = () => {
             avoidedRoleWarnings: importWarnings,
         });
         setIsInputCollapsed(false);
-        showToast(
-            failedLines.length > 0 || importWarnings.length > 0 ? 'error' : 'success',
-            `${parsedPlayers.length}명을 읽었습니다. 명단 변경 내용을 확인해 주세요.`,
-        );
+        const previewMessage = `${parsedPlayers.length}명을 읽었습니다. 명단 변경 내용을 확인해 주세요.`;
+        if (failedLines.length > 0 || importWarnings.length > 0) {
+            showDetailedError(
+                previewMessage,
+                createRosterErrorDetails(failedLines, importWarnings),
+            );
+        } else {
+            showToast('success', previewMessage);
+        }
     };
 
     const handleRunMatching = async (): Promise<boolean> => {
@@ -335,8 +357,12 @@ const App = () => {
             await balanceTeams(participants);
             return true;
         } catch (error) {
-            const message = error instanceof Error ? error.message : '매칭 중 오류가 발생했습니다.';
-            showToast('error', message);
+            const errorMessage = getErrorMessage(error, '매칭 중 오류가 발생했습니다.');
+            showDetailedError(errorMessage, {
+                title: '팀 자동 배정을 완료하지 못했습니다',
+                description: errorMessage,
+                hint: '참가자 역할 티어를 확인한 뒤 다시 시도해 주세요. 계속 실패하면 페이지를 새로고침해 주세요.',
+            });
             return false;
         }
     };
@@ -532,6 +558,22 @@ const App = () => {
     const rosterImportPreview = pendingRosterImport
         ? reconcilePlayers(players, pendingRosterImport.incoming, 'replace')
         : null;
+    const userSheetByBattleTag = useMemo(() => new Map(
+        userSheet.entries.map(entry => [normalizeUserSheetBattleTag(entry.battleTag), entry]),
+    ), [userSheet.entries]);
+    const participantBattleTags = new Set(
+        participants.map(player => normalizeUserSheetBattleTag(player.name)),
+    );
+    const handleLogout = async () => {
+        if (isLoggingOut) return;
+        setIsLoggingOut(true);
+        try {
+            await logout();
+        } catch (error) {
+            showToast('error', getErrorMessage(error, '로그아웃하지 못했습니다. 다시 시도해 주세요.'));
+            setIsLoggingOut(false);
+        }
+    };
 
     return (
         <MotionConfig reducedMotion="user">
@@ -542,32 +584,19 @@ const App = () => {
             >
                 본문으로 건너뛰기
             </a>
-            {/* Header */}
-            <header className="sticky top-0 z-50 bg-surface/80 backdrop-blur-xl border-b border-slate-800/50">
-                <div className="mx-auto flex h-16 max-w-[1600px] items-center justify-between gap-4 px-4 md:px-8">
-                    <motion.h1
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        className="text-xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300"
-                    >
-                        OWKR Match
-                    </motion.h1>
-
-                    <button
-                        type="button"
-                        onClick={handleToggleGuide}
-                        data-guide-control="true"
-                        aria-expanded={isGuideOpen || isGuideResumePromptOpen}
-                        aria-controls={isGuideResumePromptOpen
-                            ? 'guide-resume-prompt'
-                            : 'onboarding-guide'}
-                        className="inline-flex min-h-9 touch-manipulation items-center gap-1.5 rounded-md px-2.5 text-sm font-medium text-slate-400 transition-colors hover:bg-white/5 hover:text-cyan-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70"
-                    >
-                        <BookOpen size={15} aria-hidden="true" />
-                        사용 가이드
-                    </button>
-                </div>
-            </header>
+            <AppHeader
+                isGuideOpen={isGuideOpen || isGuideResumePromptOpen}
+                isLoggingOut={isLoggingOut}
+                isUserSheetOpen={userSheet.isOpen}
+                onLogout={() => void handleLogout()}
+                onOpenGuide={handleToggleGuide}
+                onOpenUserSheet={() => {
+                    setSwapSource(null);
+                    userSheet.open();
+                }}
+                userName={user.globalName ?? user.username}
+                userSheetHasError={Boolean(userSheet.error)}
+            />
 
             {/* Main Content */}
             <main
@@ -590,8 +619,18 @@ const App = () => {
                             handlePaste={handlePaste}
                             importPreview={rosterImportPreview ? {
                                 incomingCount: pendingRosterImport?.incoming.length ?? 0,
-                                failedCount: pendingRosterImport?.failedLines.length ?? 0,
-                                avoidedWarningCount: pendingRosterImport?.avoidedRoleWarnings.length ?? 0,
+                                issues: [
+                                    ...(pendingRosterImport?.failedLines ?? []).map((line, index) => ({
+                                        id: `failed-${index}-${line}`,
+                                        label: '형식 오류',
+                                        detail: line,
+                                    })),
+                                    ...(pendingRosterImport?.avoidedRoleWarnings ?? []).map(warning => ({
+                                        id: `avoided-${warning.playerName}`,
+                                        label: '비선호 중복',
+                                        detail: `${warning.discordName ? `${warning.discordName} (${warning.playerName})` : warning.playerName} · 비선호 역할 ${warning.avoidedRoleCount}개 · 자동 추가 제외`,
+                                    })),
+                                ],
                                 addedCount: rosterImportPreview.addedCount,
                                 updatedCount: rosterImportPreview.updatedCount,
                                 unchangedCount: rosterImportPreview.unchangedCount,
@@ -619,98 +658,67 @@ const App = () => {
                             onEditPlayer={handleEditPlayer}
                             onRemovePlayer={handleRemovePlayer}
                             onClearAll={handleClearAll}
+                            csrfToken={csrfToken}
+                            userSheetByBattleTag={userSheetByBattleTag}
+                            onOpenUserSheet={(battleTag) => {
+                                userSheet.open(battleTag);
+                            }}
                         />
                     </div>
 
-                    {/* Right Panel - Match Result */}
-                    <div className="grid min-w-0 content-start gap-6">
-                        {/* Action Bar */}
-                        <div className="flex min-h-11 flex-wrap items-center justify-between gap-3">
-                            <h2 className="text-lg font-semibold text-white">팀 배정 결과</h2>
-                            <div className="flex gap-2">
-                                {result && (
-                                    <button
-                                        type="button"
-                                        onClick={handleClearResult}
-                                        className="btn-ghost text-sm flex items-center gap-2"
-                                    >
-                                        <RefreshCcw size={14} aria-hidden="true" />
-                                        결과 지우기
-                                    </button>
-                                )}
-                                <button
-                                    id="matching-action"
-                                    type="button"
-                                    onClick={handleRunMatching}
-                                    disabled={isBalancing || !isReady}
-                                    className="btn-primary flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
-                                >
-                                    {isBalancing ? (
-                                        <Loader2 size={16} className="animate-spin" aria-hidden="true" />
-                                    ) : (
-                                        <Shuffle size={16} aria-hidden="true" />
-                                    )}
-                                    {isReady
-                                        ? isResultStale ? '다시 매칭' : '팀 자동 배정'
-                                        : `${10 - participants.length}명 더 필요`}
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Result Area */}
-                        <AnimatePresence mode="wait">
-                            {!result ? (
-                                <motion.div
-                                    key="empty"
-                                    initial={{ opacity: 0 }}
-                                    animate={{ opacity: 1 }}
-                                    exit={{ opacity: 0 }}
-                                    className="h-[500px] border-2 border-dashed border-slate-800 rounded-2xl flex flex-col items-center justify-center"
-                                >
-                                    {isBalancing ? (
-                                        <div className="flex flex-col items-center gap-4">
-                                            <Loader2 size={40} className="animate-spin text-accent" aria-hidden="true" />
-                                            <p className="text-slate-500 animate-pulse">최적의 조합을 계산 중…</p>
-                                        </div>
-                                    ) : (
-                                        <div className="flex flex-col items-center gap-3">
-                                            <div className="w-16 h-16 rounded-full bg-slate-800/50 flex items-center justify-center">
-                                                <Shuffle size={24} className="text-slate-600" aria-hidden="true" />
-                                            </div>
-                                            <p className="text-slate-500 text-center">
-                                                {isReady
-                                                    ? '“팀 자동 배정” 버튼을 눌러주세요'
-                                                    : `플레이어 ${10 - participants.length}명을 더 추가하면 팀을 짤 수 있습니다`
-                                                }
-                                            </p>
-                                        </div>
-                                    )}
-                                </motion.div>
-                            ) : (
-                                <motion.div
-                                    key="result"
-                                    initial={{ opacity: 0, scale: 0.98 }}
-                                    animate={{ opacity: 1, scale: 1 }}
-                                    transition={{ duration: 0.3 }}
-                                >
-                                    <MatchResult
-                                        matchResult={result}
-                                        onSlotClick={handleSlotClick}
-                                        swapSource={swapSource}
-                                        alternatives={alternatives}
-                                        isStale={isResultStale}
-                                        isGeneratingAlternatives={isBalancing}
-                                        onCancelSwap={() => setSwapSource(null)}
-                                        onSelectAlternative={handleSelectAlternative}
-                                        onShowAllRanksChange={setShowAllRanks}
-                                        showAllRanks={showAllRanks}
-                                    />
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
-                    </div>
+                    <MatchResultPanel
+                        alternatives={alternatives}
+                        isBalancing={isBalancing}
+                        isReady={isReady}
+                        isResultStale={isResultStale}
+                        onCancelSwap={() => setSwapSource(null)}
+                        onClearResult={handleClearResult}
+                        onRunMatching={() => void handleRunMatching()}
+                        onSelectAlternative={handleSelectAlternative}
+                        onShowAllRanksChange={setShowAllRanks}
+                        onSlotClick={handleSlotClick}
+                        participantCount={participants.length}
+                        result={result}
+                        showAllRanks={showAllRanks}
+                        swapSource={swapSource}
+                        userSheetByBattleTag={userSheetByBattleTag}
+                    />
                 </div>
             </main>
+            <AnimatePresence>
+                {userSheet.isOpen && (
+                    <Suspense
+                        fallback={(
+                            <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/85 text-sm text-slate-400 backdrop-blur-sm">
+                                유저 시트를 여는 중…
+                            </div>
+                        )}
+                    >
+                        <UserSheetModal
+                            key={userSheet.selectedBattleTag ?? 'all-users'}
+                            csrfToken={csrfToken}
+                            entries={userSheet.entries}
+                            error={userSheet.error}
+                            initialBattleTag={userSheet.selectedBattleTag}
+                            isLoading={userSheet.isLoading}
+                            participantBattleTags={participantBattleTags}
+                            onEntriesChange={(savedEntries) => {
+                                userSheet.updateEntries(savedEntries);
+                                showToast('success', `유저 시트 ${savedEntries.length}명을 저장했습니다.`);
+                            }}
+                            onRetry={() => void userSheet.retry()}
+                            onSaveError={(message) => {
+                                showDetailedError(message, {
+                                    title: '유저 시트를 저장하지 못했습니다',
+                                    description: message,
+                                    hint: '배틀태그 오류와 중복 행을 확인한 뒤 다시 저장해 주세요. 문제가 계속되면 저장소 연결 상태를 확인해 주세요.',
+                                });
+                            }}
+                            onClose={userSheet.close}
+                        />
+                    </Suspense>
+                )}
+            </AnimatePresence>
             <AnimatePresence>
                 {isGuideResumePromptOpen && resumableProgress && (
                     <GuideResumePrompt
@@ -737,6 +745,14 @@ const App = () => {
                 )}
             </AnimatePresence>
             <AnimatePresence>
+                {errorDetails && (
+                    <ErrorDetailsModal
+                        details={errorDetails}
+                        onClose={() => setErrorDetails(null)}
+                    />
+                )}
+            </AnimatePresence>
+            <AnimatePresence>
                 {toast && (
                     <AppToast toast={toast} onDismiss={dismissToast} />
                 )}
@@ -744,6 +760,13 @@ const App = () => {
         </div>
         </MotionConfig>
     );
+};
+
+const App = () => {
+    const { csrfToken, error, isLoading, logout, retry, user } = useAuth();
+    if (isLoading) return <LoadingScreen />;
+    if (!user) return <LoginScreen serviceError={error} onRetry={retry} />;
+    return <MatchApp csrfToken={csrfToken} logout={logout} user={user} />;
 };
 
 export default App;

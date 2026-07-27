@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { AlertCircle, Clock, MicOff, Pencil, Trash2, Users } from 'lucide-react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AlertCircle, Clock, FileSpreadsheet, MicOff, NotebookPen, Pencil, Trash2, Users } from 'lucide-react';
 import type { Player } from '../../../types';
+import {
+    normalizeUserSheetBattleTag,
+    type UserSheetEntry,
+} from '../../../utils/user-sheet';
 import { BattleTagCopyButton } from '../battle-tag-copy-button';
 import { PlayerIdentity } from '../player-identity';
 import RankBadge from '../rank-badge';
+import PlayerNoteEditor from './player-note-editor';
 
 interface PlayerListProps {
     participants: Player[];
@@ -12,6 +16,9 @@ interface PlayerListProps {
     onEditPlayer: (player: Player) => void;
     onRemovePlayer: (playerId: number) => void;
     onClearAll: () => void;
+    csrfToken: string;
+    userSheetByBattleTag: Map<string, UserSheetEntry>;
+    onOpenUserSheet: (battleTag: string) => void;
 }
 
 type PlayerListTab = 'participants' | 'waitlist';
@@ -19,8 +26,18 @@ type PlayerListTab = 'participants' | 'waitlist';
 /**
  * @description 참가자와 대기열을 탭으로 전환하며 제한된 스크롤 영역에서 관리한다.
  */
-const PlayerList = ({ participants, waitlist, onEditPlayer, onRemovePlayer, onClearAll }: PlayerListProps) => {
+const PlayerList = ({
+    participants,
+    waitlist,
+    onEditPlayer,
+    onRemovePlayer,
+    onClearAll,
+    csrfToken,
+    userSheetByBattleTag,
+    onOpenUserSheet,
+}: PlayerListProps) => {
     const [activeTab, setActiveTab] = useState<PlayerListTab>('participants');
+    const [notePlayerId, setNotePlayerId] = useState<number | null>(null);
     const participantsTabRef = useRef<HTMLButtonElement>(null);
     const waitlistTabRef = useRef<HTMLButtonElement>(null);
     const listScrollRef = useRef<HTMLDivElement>(null);
@@ -42,14 +59,12 @@ const PlayerList = ({ participants, waitlist, onEditPlayer, onRemovePlayer, onCl
         else waitlistTabRef.current?.focus();
     };
 
-    const renderPlayerItem = (player: Player, isWaitlist = false) => (
-        <motion.li
+    const renderPlayerItem = (player: Player, isWaitlist = false) => {
+        const sheetEntry = userSheetByBattleTag.get(normalizeUserSheetBattleTag(player.name));
+        return (
+        <li
             key={player.id}
-            layout
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, x: -16, transition: { duration: 0.16 } }}
-            className={`group rounded-xl border px-3 py-2.5 transition-colors ${
+            className={`group animate-fade-in rounded-xl border px-3 py-2.5 transition-colors ${
                 isWaitlist
                     ? 'border-amber-500/10 bg-amber-500/[0.035] hover:border-amber-500/20 hover:bg-amber-500/[0.06]'
                     : 'border-slate-800/60 bg-surface hover:border-slate-700/70 hover:bg-surface-overlay'
@@ -85,6 +100,31 @@ const PlayerList = ({ participants, waitlist, onEditPlayer, onRemovePlayer, onCl
                 </div>
 
                 <div className="-mr-1 flex shrink-0 items-center gap-0.5" data-exclude-export data-html2canvas-ignore="true">
+                    {sheetEntry && (
+                        <button
+                            type="button"
+                            onClick={() => onOpenUserSheet(player.name)}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-emerald-300 transition-colors hover:bg-emerald-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70"
+                            aria-label={`${player.discordName ?? player.name} 유저 시트 정보 조회`}
+                            title="유저 시트 정보"
+                        >
+                            <FileSpreadsheet size={14} aria-hidden="true" />
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        onClick={() => setNotePlayerId(current => current === player.id ? null : player.id)}
+                        className={`inline-flex h-8 w-8 touch-manipulation items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 ${
+                            notePlayerId === player.id
+                                ? 'text-cyan-300 hover:bg-cyan-500/10'
+                                : 'text-slate-600 hover:bg-cyan-500/10 hover:text-cyan-300'
+                        }`}
+                        aria-label={`${player.discordName ?? player.name} 메모`}
+                        aria-expanded={notePlayerId === player.id}
+                        title="운영 메모"
+                    >
+                        <NotebookPen size={14} aria-hidden="true" />
+                    </button>
                     <button
                         type="button"
                         onClick={() => onEditPlayer(player)}
@@ -96,7 +136,10 @@ const PlayerList = ({ participants, waitlist, onEditPlayer, onRemovePlayer, onCl
                     </button>
                     <button
                         type="button"
-                        onClick={() => onRemovePlayer(player.id)}
+                        onClick={() => {
+                            setNotePlayerId(current => current === player.id ? null : current);
+                            onRemovePlayer(player.id);
+                        }}
                         className="inline-flex h-8 w-8 touch-manipulation items-center justify-center rounded-md text-slate-600 transition-colors hover:bg-rose-500/10 hover:text-rose-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/70"
                         aria-label={`${player.discordName ?? player.name} 삭제`}
                         title={`${player.discordName ?? player.name} 삭제`}
@@ -105,8 +148,12 @@ const PlayerList = ({ participants, waitlist, onEditPlayer, onRemovePlayer, onCl
                     </button>
                 </div>
             </div>
-        </motion.li>
-    );
+            {notePlayerId === player.id && (
+                <PlayerNoteEditor csrfToken={csrfToken} player={player} />
+            )}
+        </li>
+        );
+    };
 
     return (
         <section id="player-management" className="card flex min-h-[420px] scroll-mt-24 flex-1 flex-col overflow-hidden p-4 xl:min-h-[680px]" aria-labelledby="player-management-title">
@@ -209,22 +256,16 @@ const PlayerList = ({ participants, waitlist, onEditPlayer, onRemovePlayer, onCl
                         className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60"
                     >
                         <ul className="space-y-1.5" aria-label="참가자 목록">
-                            <AnimatePresence mode="popLayout">
-                                {participants.map((player) => renderPlayerItem(player))}
-                            </AnimatePresence>
+                            {participants.map((player) => renderPlayerItem(player))}
 
                             {participantCount === 0 && (
-                                <motion.li
-                                    initial={{ opacity: 0 }}
-                                    animate={{ opacity: 1 }}
-                                    className="flex flex-col items-center justify-center py-10 text-center"
-                                >
+                                <li className="flex animate-fade-in flex-col items-center justify-center py-10 text-center">
                                     <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-slate-800/50">
                                         <Users size={18} className="text-slate-600" aria-hidden="true" />
                                     </div>
                                     <p className="text-sm text-slate-500">아직 추가된 플레이어가 없습니다</p>
                                     <p className="mt-1 text-xs text-slate-600">채팅을 붙여넣거나 직접 입력해 주세요</p>
-                                </motion.li>
+                                </li>
                             )}
                         </ul>
                     </div>
@@ -238,21 +279,15 @@ const PlayerList = ({ participants, waitlist, onEditPlayer, onRemovePlayer, onCl
                     >
                         <p className="mb-2 px-1 text-[11px] text-slate-600">참가자 삭제 시 대기열 첫 번째 인원이 자동 승격됩니다</p>
                         <ul className="space-y-1.5" aria-label="대기열 목록">
-                            <AnimatePresence mode="popLayout">
-                                {waitlist.map((player) => renderPlayerItem(player, true))}
-                            </AnimatePresence>
+                            {waitlist.map((player) => renderPlayerItem(player, true))}
 
                             {waitlistCount === 0 && (
-                                <motion.li
-                                    initial={{ opacity: 0 }}
-                                    animate={{ opacity: 1 }}
-                                    className="flex flex-col items-center justify-center py-10 text-center"
-                                >
+                                <li className="flex animate-fade-in flex-col items-center justify-center py-10 text-center">
                                     <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-amber-500/10">
                                         <Clock size={18} className="text-amber-500/60" aria-hidden="true" />
                                     </div>
                                     <p className="text-sm text-slate-500">대기 중인 참가자가 없습니다</p>
-                                </motion.li>
+                                </li>
                             )}
                         </ul>
                     </div>

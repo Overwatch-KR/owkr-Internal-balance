@@ -169,6 +169,106 @@
     }
 }
 
+.login-scene::before {
+    position: absolute;
+    background:
+        linear-gradient(115deg, rgb(8 10 15 / 0) 0%, rgb(14 165 233 / 0.08) 38%, rgb(251 191 36 / 0.07) 54%, rgb(8 10 15 / 0) 68%),
+        radial-gradient(circle at 50% 46%, rgb(255 255 255 / 0.06), transparent 30%);
+    content: '';
+    inset: -18%;
+    animation: login-drift 22s ease-in-out infinite alternate;
+}
+
+.login-scene::after {
+    position: absolute;
+    background:
+        radial-gradient(circle at 50% 50%, transparent 0%, rgb(8 10 15 / 0.28) 48%, rgb(8 10 15 / 0.9) 100%),
+        linear-gradient(to bottom, rgb(8 10 15 / 0.1), rgb(8 10 15 / 0.78));
+    content: '';
+    inset: 0;
+}
+
+.login-background {
+    position: absolute;
+    background-position: center;
+    background-size: cover;
+    filter: blur(5px) saturate(1.08) brightness(0.68);
+    inset: -2rem;
+    opacity: 0.72;
+    transform: scale(1.04);
+    animation: login-background-drift 26s ease-in-out infinite alternate;
+}
+
+.login-ambient {
+    position: absolute;
+    width: 56rem;
+    height: 56rem;
+    border-radius: 9999px;
+    filter: blur(96px);
+    mix-blend-mode: screen;
+    opacity: 0.2;
+}
+
+.login-ambient-a {
+    top: -18rem;
+    left: -18rem;
+    background: #0ea5e9;
+    animation: login-float-a 16s ease-in-out infinite alternate;
+}
+
+.login-ambient-b {
+    right: -20rem;
+    bottom: -22rem;
+    background: #f59e0b;
+    animation: login-float-b 20s ease-in-out infinite alternate;
+}
+
+@keyframes login-drift {
+    from {
+        transform: translate3d(-2%, -1%, 0) scale(1);
+    }
+    to {
+        transform: translate3d(2%, 1.5%, 0) scale(1.04);
+    }
+}
+
+@keyframes login-float-a {
+    from {
+        transform: translate3d(0, 0, 0) scale(1);
+    }
+    to {
+        transform: translate3d(8rem, 5rem, 0) scale(1.08);
+    }
+}
+
+@keyframes login-float-b {
+    from {
+        transform: translate3d(0, 0, 0) scale(1);
+    }
+    to {
+        transform: translate3d(-7rem, -4rem, 0) scale(1.06);
+    }
+}
+
+@keyframes login-background-drift {
+    from {
+        background-position: 46% 50%;
+        transform: scale(1.04);
+    }
+    to {
+        background-position: 54% 48%;
+        transform: scale(1.1);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .login-background,
+    .login-scene::before,
+    .login-ambient {
+        animation: none;
+    }
+}
+
 .guide-scrim {
     pointer-events: none;
     background: rgb(2 6 23 / 0.68);

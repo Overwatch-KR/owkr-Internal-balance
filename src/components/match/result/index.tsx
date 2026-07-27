@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import { AlertTriangle, ArrowLeftRight, Loader2, X } from 'lucide-react';
 import type { MatchResultData, Role, SwapSource, TeamResult } from '../../../types';
+import type { UserSheetEntry } from '../../../utils/user-sheet';
 import { useCopyImage } from '../../../hooks/use-copy-image';
 import MatchupTable from './matchup-table';
 import CopyButton from './copy-button';
@@ -17,6 +18,7 @@ interface MatchResultProps {
     onCancelSwap?: () => void;
     onShowAllRanksChange?: (showAllRanks: boolean) => void;
     showAllRanks?: boolean;
+    userSheetByBattleTag?: Map<string, UserSheetEntry>;
 }
 
 const NUMBER_FORMATTER = new Intl.NumberFormat('ko-KR');
@@ -56,6 +58,7 @@ const MatchResult = ({
     onCancelSwap,
     onShowAllRanksChange,
     showAllRanks = false,
+    userSheetByBattleTag,
 }: MatchResultProps) => {
     const captureRef = useRef<HTMLDivElement>(null);
     const { copyStatus, handleCopyImage } = useCopyImage(captureRef);
@@ -161,6 +164,7 @@ const MatchResult = ({
                         onSlotClick={onSlotClick}
                         swapSource={swapSource}
                         showAllRanks={showAllRanks}
+                        userSheetByBattleTag={userSheetByBattleTag}
                     />
                 </div>
 

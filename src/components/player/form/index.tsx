@@ -27,8 +27,11 @@ export type { PlayerInputMode } from '../../../hooks/use-player-input';
 
 interface RosterImportPreview {
     incomingCount: number;
-    failedCount: number;
-    avoidedWarningCount: number;
+    issues: Array<{
+        detail: string;
+        id: string;
+        label: string;
+    }>;
     addedCount: number;
     updatedCount: number;
     unchangedCount: number;
@@ -112,9 +115,21 @@ const PlayerForm = ({
         setFailedParses(prev => prev.filter(n => n !== name));
     };
 
-    const handleUseForManualInput = (name: string) => {
-        setInputs(prev => ({ ...prev, name }));
-        setFailedParses(prev => prev.filter(n => n !== name));
+    const handleUseForManualInput = (failedEntry: string, battleTag = failedEntry) => {
+        setInputs(prev => ({ ...prev, name: battleTag }));
+        setFailedParses(prev => prev.filter(entry => entry !== failedEntry));
+        onModeChange('manual');
+    };
+
+    const handleUseWarningForManualInput = (warning: AvoidedRoleWarning) => {
+        setInputs(prev => ({
+            ...prev,
+            name: warning.playerName,
+            discordName: warning.discordName ?? '',
+        }));
+        setAvoidedRoleWarnings(previous => (
+            previous.filter(item => item.playerName !== warning.playerName)
+        ));
         onModeChange('manual');
     };
 
@@ -310,15 +325,35 @@ const PlayerForm = ({
                                             </div>
                                         </dl>
 
-                                        {importPreview.failedCount > 0 && (
-                                            <p className="mt-2.5 text-xs text-amber-300">
-                                                읽지 못한 {importPreview.failedCount}명은 적용 후 직접 확인해야 합니다.
-                                            </p>
-                                        )}
-                                        {importPreview.avoidedWarningCount > 0 && (
-                                            <p className="mt-2.5 text-xs text-rose-300">
-                                                비선호가 여러 개인 {importPreview.avoidedWarningCount}명은 하나만 유지되며 적용 후 별도로 표시됩니다.
-                                            </p>
+                                        {importPreview.issues.length > 0 && (
+                                            <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/[0.08] p-3" role="alert">
+                                                <div className="flex items-start gap-2">
+                                                    <AlertCircle size={15} className="mt-0.5 shrink-0 text-rose-300" aria-hidden="true" />
+                                                    <div className="min-w-0">
+                                                        <p className="text-xs font-semibold text-rose-200">
+                                                            자동 추가하지 않는 항목 {importPreview.issues.length}개
+                                                        </p>
+                                                        <p className="mt-1 text-[11px] leading-relaxed text-rose-200/70">
+                                                            원문을 수정한 뒤 다시 가져오거나, 나머지 정상 유저만 먼저 적용할 수 있습니다.
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <ul className="mt-2.5 space-y-1.5">
+                                                    {importPreview.issues.map(issue => (
+                                                        <li
+                                                            key={issue.id}
+                                                            className="rounded-lg border border-rose-500/15 bg-slate-950/35 px-3 py-2"
+                                                        >
+                                                            <span className="block whitespace-nowrap text-[10px] font-semibold text-rose-300">
+                                                                {issue.label}
+                                                            </span>
+                                                            <span className="mt-0.5 block break-words text-xs leading-relaxed text-slate-300">
+                                                                {issue.detail}
+                                                            </span>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
                                         )}
 
                                         <div className="mt-3 grid gap-2">
@@ -327,14 +362,14 @@ const PlayerForm = ({
                                                 onClick={() => onApplyImport('replace')}
                                                 className="btn-primary w-full"
                                             >
-                                                새 명단으로 교체
+                                                정상 유저 {importPreview.incomingCount}명으로 교체
                                             </button>
                                             <button
                                                 type="button"
                                                 onClick={() => onApplyImport('append')}
                                                 className="btn-ghost w-full border border-slate-700/70"
                                             >
-                                                기존 명단에 추가
+                                                정상 유저만 기존 명단에 추가
                                             </button>
                                             <button
                                                 type="button"
@@ -464,24 +499,30 @@ const PlayerForm = ({
                                     </span>
                                 </div>
                                 <p className="mb-3 text-xs leading-relaxed text-slate-400">
-                                    비선호는 한 역할만 허용됩니다. 아래 참가자는 먼저 입력된 비선호 하나만 유지했으니 참가자 목록에서 수정해 주세요.
+                                    비선호는 한 역할만 허용됩니다. 아래 항목은 임의로 보정하지 않고 명단에서 제외했습니다.
                                 </p>
                                 <div className="space-y-2">
                                     {avoidedRoleWarnings.map((warning) => {
-                                        const roleLabel = warning.keptRole === 'TANK'
-                                            ? '탱커'
-                                            : warning.keptRole === 'DPS' ? '딜러' : '힐러';
                                         const displayName = warning.discordName || warning.playerName;
 
                                         return (
                                             <div
                                                 key={warning.playerName}
-                                                className="flex items-center justify-between gap-2 rounded-lg bg-surface/50 px-3 py-2"
+                                                className="flex items-center justify-between gap-2 rounded-lg border border-rose-500/15 bg-rose-500/[0.06] px-3 py-2"
                                             >
-                                                <span className="min-w-0 text-xs text-slate-300">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleUseWarningForManualInput(warning)}
+                                                    className="min-w-0 flex-1 text-left text-xs text-slate-300 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/70"
+                                                >
                                                     <strong className="font-medium text-rose-200">{displayName}</strong>
-                                                    {' · '}{warning.avoidedRoleCount}개 감지, {roleLabel}만 유지
-                                                </span>
+                                                    <span className="block break-all font-mono text-[11px] text-slate-500">
+                                                        {warning.playerName}
+                                                    </span>
+                                                    <span className="mt-1 block text-rose-300/80">
+                                                        비선호 {warning.avoidedRoleCount}개 감지 · 자동 추가 제외 · 눌러서 수동 입력
+                                                    </span>
+                                                </button>
                                                 <button
                                                     type="button"
                                                     onClick={() => setAvoidedRoleWarnings(previous => (
@@ -501,39 +542,48 @@ const PlayerForm = ({
 
                         {/* Failed Parses Section */}
                         {failedParses.length > 0 && (
-                            <div className="mt-5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 animate-fade-in" role="status" aria-live="polite">
+                            <div className="mt-5 rounded-xl border border-rose-500/30 bg-rose-500/[0.08] p-4 animate-fade-in" role="status" aria-live="polite">
                                 <div className="mb-3 flex items-center gap-2">
-                                    <AlertCircle size={14} className="text-amber-400" aria-hidden="true" />
-                                    <span className="text-sm font-medium text-amber-400">
+                                    <AlertCircle size={14} className="text-rose-400" aria-hidden="true" />
+                                    <span className="text-sm font-medium text-rose-300">
                                         읽지 못한 항목 ({failedParses.length}명)
                                     </span>
                                 </div>
                                 <p className="mb-3 text-xs text-slate-400">
-                                    이름을 누르면 직접 입력으로 옮겨집니다
+                                    배틀태그가 확인되는 항목은 누르면 수동 입력으로 옮겨집니다.
                                 </p>
                                 <div className="space-y-2">
-                                    {failedParses.map((name) => (
-                                        <div
-                                            key={name}
-                                            className="group flex items-center justify-between rounded-lg bg-surface/50 px-3 py-2"
-                                        >
-                                            <button
-                                                type="button"
-                                                onClick={() => handleUseForManualInput(name)}
-                                                className="min-h-8 flex-1 text-left text-sm text-slate-300 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70"
+                                    {failedParses.map((name) => {
+                                        const battleTag = name.match(/[^\s·]+#\d{4,}/)?.[0];
+                                        return (
+                                            <div
+                                                key={name}
+                                                className="group flex items-center justify-between gap-2 rounded-lg border border-rose-500/15 bg-surface/50 px-3 py-2"
                                             >
-                                                {name}
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => handleRemoveFailed(name)}
-                                                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-rose-500/10 hover:text-rose-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/70"
-                                                aria-label={`${name} 실패 항목 삭제`}
-                                            >
-                                                <X size={14} aria-hidden="true" />
-                                            </button>
-                                        </div>
-                                    ))}
+                                                {battleTag ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleUseForManualInput(name, battleTag)}
+                                                        className="min-h-8 min-w-0 flex-1 break-words text-left text-sm leading-relaxed text-slate-300 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/70"
+                                                    >
+                                                        {name}
+                                                    </button>
+                                                ) : (
+                                                    <span className="min-w-0 flex-1 break-words text-sm leading-relaxed text-slate-300">
+                                                        {name}
+                                                    </span>
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRemoveFailed(name)}
+                                                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-rose-500/10 hover:text-rose-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/70"
+                                                    aria-label={`${name} 실패 항목 삭제`}
+                                                >
+                                                    <X size={14} aria-hidden="true" />
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         )}

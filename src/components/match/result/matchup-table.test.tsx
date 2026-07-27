@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { MatchResultData, Player, Rank } from '../../../types';
+import type { UserSheetEntry } from '../../../utils/user-sheet';
 import MatchupTable from './matchup-table';
 
 const createRank = (
@@ -112,5 +113,34 @@ describe('MatchupTable', () => {
         expect(markup).toContain('aria-label="마이크 미사용"');
         expect(markup).toContain('아주 긴 디스코드 닉네임 1');
         expect(markup).toContain('VeryLongBattleTag1#12345');
+    });
+
+    it('배틀태그가 일치하는 유저 시트 특이사항을 대진표에 표시한다', () => {
+        const sheetEntry: UserSheetEntry = {
+            id: 'sheet-1',
+            discordName: '시트 닉네임',
+            battleTag: players[0].name,
+            tank: '브1',
+            dps: '다3',
+            support: '미배치',
+            note: '탱커 픽 조율 필요',
+            createdAt: 1,
+            updatedAt: 1,
+            updatedByName: '관리자',
+        };
+        const markup = renderToStaticMarkup(
+            <MatchupTable
+                matchResult={matchResult}
+                onSlotClick={() => undefined}
+                swapSource={null}
+                userSheetByBattleTag={new Map([
+                    [sheetEntry.battleTag.toLowerCase(), sheetEntry],
+                ])}
+            />,
+        );
+
+        expect(markup).toContain('탱커 픽 조율 필요');
+        expect(markup).toContain('aria-label="시트 특이사항: 탱커 픽 조율 필요"');
+        expect(markup).not.toContain('data-exclude-export="true">탱커 픽 조율 필요');
     });
 });

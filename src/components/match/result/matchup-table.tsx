@@ -5,7 +5,12 @@ import { formatRank } from '../../../constants';
 import type { MatchResultData, Player, Role, SwapSource, Tier } from '../../../types';
 import { DamageIcon, SupportIcon, TankIcon } from '../../roles/icon';
 import { getTierImage } from '../../../utils/tier';
+import {
+    normalizeUserSheetBattleTag,
+    type UserSheetEntry,
+} from '../../../utils/user-sheet';
 import PlayerTooltip from './player-tooltip';
+import { PlayerSheetNote } from './player-sheet-note';
 import { PlayerIdentity } from '../../player/player-identity';
 import { BattleTagCopyButton } from '../../player/battle-tag-copy-button';
 
@@ -14,6 +19,7 @@ interface MatchupTableProps {
     onSlotClick: (teamIdx: number, role: Role, idx: number) => void;
     swapSource: SwapSource | null;
     showAllRanks?: boolean;
+    userSheetByBattleTag?: Map<string, UserSheetEntry>;
 }
 
 interface RowDef {
@@ -197,7 +203,13 @@ const PlayerRankSummary = ({ player, assignedRole, align }: PlayerRankSummaryPro
 /**
  * @description 두 팀의 역할별 맞대결을 한 줄씩 보여주는 테이블 컴포넌트.
  */
-const MatchupTable = ({ matchResult, onSlotClick, swapSource, showAllRanks = false }: MatchupTableProps) => {
+const MatchupTable = ({
+    matchResult,
+    onSlotClick,
+    swapSource,
+    showAllRanks = false,
+    userSheetByBattleTag,
+}: MatchupTableProps) => {
     const { teamA, teamB } = matchResult;
     const [hoveredSlot, setHoveredSlot] = useState<string | null>(null);
 
@@ -235,6 +247,12 @@ const MatchupTable = ({ matchResult, onSlotClick, swapSource, showAllRanks = fal
                 const selB = isSelected(1, row.role, row.arrayIndex);
                 const slotKeyA = `A-${row.role}-${row.arrayIndex}`;
                 const slotKeyB = `B-${row.role}-${row.arrayIndex}`;
+                const sheetNoteA = userSheetByBattleTag?.get(
+                    normalizeUserSheetBattleTag(row.playerA.name),
+                )?.note;
+                const sheetNoteB = userSheetByBattleTag?.get(
+                    normalizeUserSheetBattleTag(row.playerB.name),
+                )?.note;
 
                 return (
                     <div
@@ -317,6 +335,7 @@ const MatchupTable = ({ matchResult, onSlotClick, swapSource, showAllRanks = fal
                                             </div>
                                         </>
                                     )}
+                                    <PlayerSheetNote note={sheetNoteA} align="right" />
                                 </div>
                                 </motion.div>
                             </AnimatePresence>
@@ -403,6 +422,7 @@ const MatchupTable = ({ matchResult, onSlotClick, swapSource, showAllRanks = fal
                                             </div>
                                         </>
                                     )}
+                                    <PlayerSheetNote note={sheetNoteB} align="left" />
                                 </div>
                                 </motion.div>
                             </AnimatePresence>
