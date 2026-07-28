@@ -1,6 +1,6 @@
 import { formatRank } from '../constants';
 import type { Player } from '../types';
-import { requestJson } from './api';
+import { ApiError, requestJson } from './api';
 
 export interface UserSheetEntry {
     id: string;
@@ -19,6 +19,15 @@ export interface UserSheetChangeSummary {
     addedCount: number;
     removedCount: number;
     updatedCount: number;
+}
+
+export interface UserSheetSnapshot {
+    entries: UserSheetEntry[];
+    sheetVersion: number;
+}
+
+interface UserSheetConflictResponse {
+    snapshot?: unknown;
 }
 
 export type UserSheetDraftEntry = Pick<
@@ -77,11 +86,49 @@ export const cleanUserSheetRank = (value: string): string => (
 /**
  * @description 관리자들이 함께 사용하는 유저 정보 시트를 가져온다.
  */
-export const fetchUserSheet = async (): Promise<UserSheetEntry[]> => {
-    const body = await requestJson<{ entries: UserSheetEntry[] }>('/api/user-sheet', {
+export const fetchUserSheet = async (): Promise<UserSheetSnapshot> => {
+    return requestJson<UserSheetSnapshot>('/api/user-sheet', {
         credentials: 'same-origin',
     });
-    return body.entries;
+};
+
+const isUserSheetEntry = (value: unknown): value is UserSheetEntry => {
+    if (!value || typeof value !== 'object') return false;
+    const entry = value as Partial<UserSheetEntry>;
+    return typeof entry.id === 'string'
+        && typeof entry.discordName === 'string'
+        && typeof entry.battleTag === 'string'
+        && typeof entry.tank === 'string'
+        && typeof entry.dps === 'string'
+        && typeof entry.support === 'string'
+        && typeof entry.note === 'string'
+        && typeof entry.createdAt === 'number'
+        && typeof entry.updatedAt === 'number'
+        && typeof entry.updatedByName === 'string';
+};
+
+const isUserSheetSnapshot = (value: unknown): value is UserSheetSnapshot => {
+    if (!value || typeof value !== 'object') return false;
+    const snapshot = value as Partial<UserSheetSnapshot>;
+    return Number.isSafeInteger(snapshot.sheetVersion)
+        && Array.isArray(snapshot.entries)
+        && snapshot.entries.every(isUserSheetEntry);
+};
+
+/**
+ * @description 409 버전 충돌 응답에서 최신 시트를 꺼내고 구버전 서버 응답은 추가 조회로 보완한다.
+ */
+export const fetchUserSheetConflictSnapshot = async (
+    error: unknown,
+): Promise<UserSheetSnapshot | null> => {
+    if (!(error instanceof ApiError) || error.status !== 409) return null;
+    const isVersionConflict = error.code === 'USER_SHEET_CONFLICT'
+        || (!error.code && /(먼저 수정|상태가 변경)/.test(error.message));
+    if (!isVersionConflict) return null;
+
+    const body = error.body as UserSheetConflictResponse | null;
+    if (isUserSheetSnapshot(body?.snapshot)) return body.snapshot;
+    return fetchUserSheet();
 };
 
 /**
@@ -89,18 +136,18 @@ export const fetchUserSheet = async (): Promise<UserSheetEntry[]> => {
  */
 export const saveUserSheet = async (
     entries: UserSheetDraftEntry[],
+    sheetVersion: number,
     csrfToken: string,
-): Promise<UserSheetEntry[]> => {
-    const body = await requestJson<{ entries: UserSheetEntry[] }>('/api/user-sheet', {
+): Promise<UserSheetSnapshot> => {
+    return requestJson<UserSheetSnapshot>('/api/user-sheet', {
         method: 'PUT',
         credentials: 'same-origin',
         headers: {
             'Content-Type': 'application/json',
             'X-CSRF-Token': csrfToken,
         },
-        body: JSON.stringify({ entries }),
+        body: JSON.stringify({ entries, sheetVersion }),
     });
-    return body.entries;
 };
 
 /**
@@ -108,23 +155,22 @@ export const saveUserSheet = async (
  */
 export const updateUserSheetEntry = async (
     entry: UserSheetDraftEntry,
+    expectedUpdatedAt: number,
     csrfToken: string,
-): Promise<UserSheetEntry[]> => {
-    const body = await requestJson<{ entries: UserSheetEntry[] }>('/api/user-sheet', {
+): Promise<UserSheetSnapshot> => {
+    return requestJson<UserSheetSnapshot>('/api/user-sheet', {
         method: 'PATCH',
         credentials: 'same-origin',
         headers: {
             'Content-Type': 'application/json',
             'X-CSRF-Token': csrfToken,
         },
-        body: JSON.stringify({ entry }),
+        body: JSON.stringify({ entry, expectedUpdatedAt }),
     });
-    return body.entries;
 };
 
-export interface AddMissingUserSheetPlayersResult {
+export interface AddMissingUserSheetPlayersResult extends UserSheetSnapshot {
     addedCount: number;
-    entries: UserSheetEntry[];
 }
 
 /**

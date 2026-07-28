@@ -1,14 +1,19 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, Loader2, LockKeyhole, RefreshCcw, Save } from 'lucide-react';
 import {
     fetchPlayerNote,
+    getCachedPlayerNote,
+    invalidatePlayerNoteCache,
     savePlayerNote,
+    subscribePlayerNote,
 } from '../../../utils/player-note';
 import { getErrorMessage } from '../../../utils/api';
 
 interface PlayerNoteEditorProps {
     battleTag: string;
+    cacheScope?: string;
     csrfToken: string;
+    entryId?: string;
     isEditable?: boolean;
 }
 
@@ -18,7 +23,9 @@ interface PlayerNoteFormProps {
     isSaving: boolean;
     message: string;
     onChange: (value: string) => void;
+    onRefresh?: () => void;
     onSave?: () => void;
+    isRefreshing?: boolean;
 }
 
 interface PlayerNoteViewerProps {
@@ -45,24 +52,51 @@ export const PlayerNoteForm = ({
     isSaving,
     message,
     onChange,
+    onRefresh,
     onSave,
+    isRefreshing = false,
 }: PlayerNoteFormProps) => (
     <div className="mt-2 rounded-lg border border-slate-700/60 bg-slate-950/45 p-3">
-        <div className="mb-2 flex items-center gap-2 rounded-lg bg-cyan-500/10 px-2.5 py-2 text-[11px] text-cyan-200">
-            <LockKeyhole size={12} className="shrink-0" aria-hidden="true" />
-            <span className="font-medium">나만 보기</span>
-            <span className="text-slate-500">현재 로그인한 계정에만 표시됩니다.</span>
+        <div className="mb-2 flex items-center justify-between gap-2 rounded-lg bg-cyan-500/10 px-2.5 py-2 text-[11px] text-cyan-200">
+            <span className="inline-flex min-w-0 items-center gap-2">
+                <LockKeyhole size={12} className="shrink-0" aria-hidden="true" />
+                <span className="shrink-0 font-medium">나만 보기</span>
+                <span className="truncate text-slate-500">현재 로그인한 계정에만 표시됩니다.</span>
+            </span>
+            {onRefresh && (
+                <button
+                    type="button"
+                    onClick={onRefresh}
+                    disabled={isRefreshing || isSaving}
+                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-cyan-400/10 hover:text-cyan-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70 disabled:opacity-40"
+                    aria-label="개인 운영 메모 새로고침"
+                    title="개인 운영 메모 새로고침"
+                >
+                    <RefreshCcw
+                        size={12}
+                        className={isRefreshing ? 'animate-spin' : ''}
+                        aria-hidden="true"
+                    />
+                </button>
+            )}
         </div>
         <textarea
             value={draft}
             onChange={(event) => onChange(event.target.value)}
             maxLength={1000}
             className="input-base h-24 resize-none text-xs leading-relaxed"
-            placeholder="개인적으로 참고할 운영 메모를 입력하세요."
+            placeholder="개인적으로 참고할 운영 메모를 입력하세요…"
+            aria-label="개인 운영 메모"
         />
         {onSave && (
             <div className="mt-2 flex items-center justify-between gap-2">
-                <p className="min-w-0 truncate text-[11px] text-slate-500" role="status">{message}</p>
+                <p
+                    className="min-w-0 truncate text-[11px] text-slate-500"
+                    role="status"
+                    aria-live="polite"
+                >
+                    {message}
+                </p>
                 <button
                     type="button"
                     onClick={onSave}
@@ -70,7 +104,7 @@ export const PlayerNoteForm = ({
                     className="inline-flex min-h-8 shrink-0 items-center gap-1 rounded-md bg-cyan-500/15 px-2.5 text-xs font-medium text-cyan-200 transition-colors hover:bg-cyan-500/25 disabled:opacity-40"
                 >
                     {isSaving ? <Loader2 size={12} className="animate-spin" aria-hidden="true" /> : <Save size={12} aria-hidden="true" />}
-                    저장
+                    개인 메모 저장
                 </button>
             </div>
         )}
@@ -82,22 +116,54 @@ export const PlayerNoteForm = ({
  */
 export const PlayerNoteEditor = ({
     battleTag,
+    cacheScope,
     csrfToken,
+    entryId,
     isEditable = true,
 }: PlayerNoteEditorProps) => {
-    const [draft, setDraft] = useState('');
-    const [isLoading, setIsLoading] = useState(true);
+    const reference = useMemo(
+        () => ({ battleTag, entryId }),
+        [battleTag, entryId],
+    );
+    const resolvedCacheScope = cacheScope ?? csrfToken;
+    const initialCache = getCachedPlayerNote(reference, resolvedCacheScope);
+    const initialContent = initialCache?.note?.content ?? '';
+    const [savedContent, setSavedContent] = useState(initialContent);
+    const [draft, setDraft] = useState(initialContent);
+    const [isLoading, setIsLoading] = useState(!initialCache);
     const [isSaving, setIsSaving] = useState(false);
     const [message, setMessage] = useState('');
     const [loadError, setLoadError] = useState<string | null>(null);
+    const savedContentRef = useRef(initialContent);
 
     useEffect(() => {
         let active = true;
-        void fetchPlayerNote(battleTag)
+        const cached = getCachedPlayerNote(reference, resolvedCacheScope);
+        const cachedContent = cached?.note?.content ?? '';
+        savedContentRef.current = cachedContent;
+        setSavedContent(cachedContent);
+        setDraft(cachedContent);
+        setIsLoading(!cached);
+        setMessage('');
+        setLoadError(null);
+
+        const applyLoadedNote = (content: string) => {
+            if (!active) return;
+            const previousSavedContent = savedContentRef.current;
+            setDraft(current => current === previousSavedContent ? content : current);
+            savedContentRef.current = content;
+            setSavedContent(content);
+            setLoadError(null);
+            setIsLoading(false);
+        };
+        const unsubscribe = subscribePlayerNote(
+            reference,
+            resolvedCacheScope,
+            note => applyLoadedNote(note?.content ?? ''),
+        );
+        void fetchPlayerNote(reference, { cacheScope: resolvedCacheScope })
             .then((note) => {
-                if (!active) return;
-                setDraft(note?.content ?? '');
-                setLoadError(null);
+                applyLoadedNote(note?.content ?? '');
             })
             .catch((error: unknown) => {
                 if (!active) return;
@@ -108,15 +174,23 @@ export const PlayerNoteEditor = ({
             });
         return () => {
             active = false;
+            unsubscribe();
         };
-    }, [battleTag]);
+    }, [reference, resolvedCacheScope]);
 
     const retryLoad = async () => {
         setIsLoading(true);
         setLoadError(null);
+        invalidatePlayerNoteCache(reference, resolvedCacheScope);
         try {
-            const note = await fetchPlayerNote(battleTag);
-            setDraft(note?.content ?? '');
+            const note = await fetchPlayerNote(reference, {
+                cacheScope: resolvedCacheScope,
+                force: true,
+            });
+            const content = note?.content ?? '';
+            savedContentRef.current = content;
+            setSavedContent(content);
+            setDraft(content);
         } catch (error) {
             setLoadError(getErrorMessage(error, '개인 운영 메모를 불러오지 못했습니다.'));
         } finally {
@@ -128,8 +202,17 @@ export const PlayerNoteEditor = ({
         setIsSaving(true);
         setMessage('');
         try {
-            await savePlayerNote(battleTag, draft, csrfToken);
-            setMessage(draft.trim()
+            const note = await savePlayerNote(
+                reference,
+                draft,
+                csrfToken,
+                resolvedCacheScope,
+            );
+            const content = note?.content ?? '';
+            savedContentRef.current = content;
+            setSavedContent(content);
+            setDraft(content);
+            setMessage(content
                 ? '개인 운영 메모를 저장했습니다.'
                 : '개인 운영 메모를 삭제했습니다.');
         } catch (error) {
@@ -172,10 +255,12 @@ export const PlayerNoteEditor = ({
     return (
         <PlayerNoteForm
             draft={draft}
-            isDisabled={!csrfToken}
+            isDisabled={!csrfToken || draft.trim() === savedContent}
             isSaving={isSaving}
+            isRefreshing={isLoading}
             message={message}
             onChange={setDraft}
+            onRefresh={() => void retryLoad()}
             onSave={() => void save()}
         />
     );

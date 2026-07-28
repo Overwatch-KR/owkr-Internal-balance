@@ -31,4 +31,25 @@ describe('requestJson', () => {
             }),
         );
     });
+
+    it('충돌 병합에 필요한 오류 코드와 응답 본문을 보존한다', async () => {
+        const body = {
+            code: 'USER_SHEET_CONFLICT',
+            error: '동시 수정 충돌',
+            snapshot: { entries: [], sheetVersion: 3 },
+        };
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(
+            JSON.stringify(body),
+            { status: 409, headers: { 'Content-Type': 'application/json' } },
+        )));
+
+        await expect(requestJson('/api/test')).rejects.toEqual(
+            expect.objectContaining({
+                body,
+                code: 'USER_SHEET_CONFLICT',
+                message: '동시 수정 충돌',
+                status: 409,
+            }),
+        );
+    });
 });

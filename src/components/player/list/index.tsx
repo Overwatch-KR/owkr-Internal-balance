@@ -17,6 +17,7 @@ interface PlayerListProps {
     onRemovePlayer: (playerId: number) => void;
     onClearAll: () => void;
     csrfToken: string;
+    noteCacheScope: string;
     userSheetByBattleTag: Map<string, UserSheetEntry>;
     onOpenUserSheet: (battleTag: string) => void;
 }
@@ -33,6 +34,7 @@ const PlayerList = ({
     onRemovePlayer,
     onClearAll,
     csrfToken,
+    noteCacheScope,
     userSheetByBattleTag,
     onOpenUserSheet,
 }: PlayerListProps) => {
@@ -149,7 +151,12 @@ const PlayerList = ({
                 </div>
             </div>
             {notePlayerId === player.id && (
-                <PlayerNoteEditor battleTag={player.name} csrfToken={csrfToken} />
+                <PlayerNoteEditor
+                    battleTag={player.name}
+                    cacheScope={noteCacheScope}
+                    csrfToken={csrfToken}
+                    entryId={sheetEntry?.id}
+                />
             )}
         </li>
         );

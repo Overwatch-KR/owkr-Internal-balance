@@ -1,8 +1,8 @@
-import { useMemo, useState, type ClipboardEvent } from 'react';
-import { AlertCircle, CheckCircle2, Info, Plus, Save, Trash2 } from 'lucide-react';
+import { useMemo, useRef, useState, type ClipboardEvent } from 'react';
+import { AlertCircle, Info, Plus, Save, Trash2 } from 'lucide-react';
 import {
     cleanUserSheetRank,
-    isActiveUserSheetEntry,
+    fetchUserSheetConflictSnapshot,
     mergeDiscordPlayersIntoUserSheet,
     normalizeUserSheetBattleTag,
     parseUserSheetRows,
@@ -10,46 +10,53 @@ import {
     validateUserSheetEntries,
     type UserSheetDraftEntry,
     type UserSheetEntry,
-    type UserSheetValidationError,
+    type UserSheetSnapshot,
 } from '../../utils/user-sheet';
+import {
+    mergeUserSheetDrafts,
+    type UserSheetMergeChoice,
+    type UserSheetMergeResolutions,
+} from '../../utils/user-sheet-merge';
 import { getErrorMessage } from '../../utils/api';
 import { parseMultipleLines } from '../../utils/parser';
 import {
     DiscordSheetImport,
     type DiscordSheetImportResult,
 } from './discord-sheet-import';
+import { UserSheetConflictResolver } from './user-sheet-conflict-resolver';
+import {
+    UserSheetEditorTable,
+    type UserSheetEditorField,
+} from './user-sheet-editor-table';
 
 interface UserSheetEditorProps {
     appendEmptyRow?: boolean;
     csrfToken: string;
+    disableAutoFocus?: boolean;
     entries: UserSheetEntry[];
     focusBattleTag?: string;
     onCancel: () => void;
+    onSnapshotChange: (snapshot: UserSheetSnapshot) => void;
     onSaveError: (message: string) => void;
-    onSaved: (entries: UserSheetEntry[]) => void;
+    onSaved: (snapshot: UserSheetSnapshot) => void;
+    sheetVersion: number;
 }
 
-type EntryField = 'discordName' | 'battleTag' | 'tank' | 'dps' | 'support' | 'note';
+interface UserSheetEditorConflict {
+    baseRows: UserSheetDraftEntry[];
+    draftRows: UserSheetDraftEntry[];
+    latestSnapshot: UserSheetSnapshot;
+    resolutions: UserSheetMergeResolutions;
+}
 
-const FIELDS: readonly EntryField[] = ['discordName', 'battleTag', 'tank', 'dps', 'support', 'note'];
-const COLUMNS: ReadonlyArray<{ field: EntryField; label: string; placeholder: string; width: string }> = [
-    { field: 'discordName', label: '디스코드 이름', placeholder: '상민', width: 'min-w-40' },
-    { field: 'battleTag', label: '배틀태그', placeholder: 'Player#1234', width: 'min-w-56' },
-    { field: 'tank', label: '탱커', placeholder: '다3', width: 'min-w-28' },
-    { field: 'dps', label: '딜러', placeholder: '플1', width: 'min-w-28' },
-    { field: 'support', label: '힐러', placeholder: '마5', width: 'min-w-28' },
-    { field: 'note', label: '특이사항', placeholder: '마이크X', width: 'min-w-72' },
+const FIELDS: readonly UserSheetEditorField[] = [
+    'discordName',
+    'battleTag',
+    'tank',
+    'dps',
+    'support',
+    'note',
 ];
-
-const ERROR_LABELS: Record<UserSheetValidationError, string> = {
-    INVALID_BATTLE_TAG: '형식 오류',
-    DUPLICATE_BATTLE_TAG: '중복',
-};
-
-const ERROR_DETAILS: Record<UserSheetValidationError, string> = {
-    INVALID_BATTLE_TAG: '배틀태그에 #과 숫자 태그를 포함해 주세요. 예: Player#1234',
-    DUPLICATE_BATTLE_TAG: '같은 배틀태그가 시트에 두 번 입력되어 있습니다.',
-};
 
 const makeEmptyEntry = (): UserSheetDraftEntry => ({
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
@@ -67,11 +74,14 @@ const makeEmptyEntry = (): UserSheetDraftEntry => ({
 export function UserSheetEditor({
     appendEmptyRow = false,
     csrfToken,
+    disableAutoFocus = false,
     entries,
     focusBattleTag,
     onCancel,
+    onSnapshotChange,
     onSaveError,
     onSaved,
+    sheetVersion,
 }: UserSheetEditorProps) {
     const [rows, setRows] = useState<UserSheetDraftEntry[]>(() => (
         entries.length > 0
@@ -84,6 +94,11 @@ export function UserSheetEditor({
     const [isSaving, setIsSaving] = useState(false);
     const [message, setMessage] = useState('');
     const [isClearConfirming, setIsClearConfirming] = useState(false);
+    const [conflict, setConflict] = useState<UserSheetEditorConflict | null>(null);
+    const baseSheetVersionRef = useRef(sheetVersion);
+    const baseRowsRef = useRef<UserSheetDraftEntry[]>(
+        entries.map(entry => ({ ...entry })),
+    );
     const focusRowId = appendEmptyRow
         ? rows[rows.length - 1]?.id
         : rows.find(row => (
@@ -93,11 +108,21 @@ export function UserSheetEditor({
         ))?.id;
 
     const validation = useMemo(() => validateUserSheetEntries(rows), [rows]);
+    const conflictMerge = useMemo(() => (
+        conflict
+            ? mergeUserSheetDrafts(
+                conflict.baseRows,
+                conflict.draftRows,
+                conflict.latestSnapshot.entries,
+                conflict.resolutions,
+            )
+            : null
+    ), [conflict]);
     const invalidRowNumbers = rows
         .map((row, index) => validation.errors.has(row.id) ? index + 1 : null)
         .filter((rowNumber): rowNumber is number => rowNumber !== null);
 
-    const updateCell = (rowId: string, field: EntryField, value: string) => {
+    const updateCell = (rowId: string, field: UserSheetEditorField, value: string) => {
         const nextValue = field === 'tank' || field === 'dps' || field === 'support'
             ? cleanUserSheetRank(value)
             : value;
@@ -149,6 +174,62 @@ export function UserSheetEditor({
         };
     };
 
+    const openConflictResolver = async (
+        error: unknown,
+        baseRows: UserSheetDraftEntry[],
+        draftRows: UserSheetDraftEntry[],
+    ): Promise<boolean> => {
+        try {
+            const latestSnapshot = await fetchUserSheetConflictSnapshot(error);
+            if (!latestSnapshot) return false;
+            onSnapshotChange(latestSnapshot);
+            setConflict({
+                baseRows: baseRows.map(row => ({ ...row })),
+                draftRows: draftRows.map(row => ({ ...row })),
+                latestSnapshot,
+                resolutions: {},
+            });
+            return true;
+        } catch (conflictError) {
+            const errorMessage = getErrorMessage(
+                conflictError,
+                '병합할 최신 시트를 불러오지 못했습니다.',
+            );
+            setMessage(errorMessage);
+            onSaveError(errorMessage);
+            return true;
+        }
+    };
+
+    const saveRows = async (
+        nextRows: UserSheetDraftEntry[],
+        expectedSheetVersion: number,
+        conflictBaseRows: UserSheetDraftEntry[],
+    ): Promise<void> => {
+        setIsSaving(true);
+        try {
+            const snapshot = await saveUserSheet(
+                nextRows,
+                expectedSheetVersion,
+                csrfToken,
+            );
+            onSaved(snapshot);
+        } catch (error) {
+            const didOpenConflict = await openConflictResolver(
+                error,
+                conflictBaseRows,
+                nextRows,
+            );
+            if (!didOpenConflict) {
+                const errorMessage = getErrorMessage(error, '유저 시트를 저장하지 못했습니다.');
+                setMessage(errorMessage);
+                onSaveError(errorMessage);
+            }
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
     const handleSave = async () => {
         setMessage('');
         if (validation.errors.size > 0) {
@@ -157,21 +238,86 @@ export function UserSheetEditor({
             onSaveError(validationMessage);
             return;
         }
-        setIsSaving(true);
-        try {
-            const saved = await saveUserSheet(validation.activeRows, csrfToken);
-            onSaved(saved);
-        } catch (error) {
-            const errorMessage = getErrorMessage(error, '유저 시트를 저장하지 못했습니다.');
-            setMessage(errorMessage);
-            onSaveError(errorMessage);
-        } finally {
-            setIsSaving(false);
-        }
+        await saveRows(
+            validation.activeRows,
+            baseSheetVersionRef.current,
+            baseRowsRef.current,
+        );
     };
 
+    const resolveConflict = (conflictId: string, choice: UserSheetMergeChoice) => {
+        setConflict(current => current ? {
+            ...current,
+            resolutions: { ...current.resolutions, [conflictId]: choice },
+        } : current);
+    };
+
+    const resolveAllConflicts = (choice: UserSheetMergeChoice) => {
+        setConflict(current => current ? {
+            ...current,
+            resolutions: Object.fromEntries(
+                mergeUserSheetDrafts(
+                    current.baseRows,
+                    current.draftRows,
+                    current.latestSnapshot.entries,
+                ).conflicts.map(item => [item.id, choice]),
+            ),
+        } : current);
+    };
+
+    const applyConflictMerge = async () => {
+        if (!conflict || !conflictMerge) return;
+        const unresolved = conflictMerge.conflicts.some(item => !conflict.resolutions[item.id]);
+        if (unresolved) return;
+
+        const mergedValidation = validateUserSheetEntries(conflictMerge.rows);
+        if (mergedValidation.errors.size > 0) {
+            const validationMessage = '병합 결과의 중복 또는 잘못된 배틀태그를 수정해 주세요.';
+            setRows(conflictMerge.rows);
+            baseRowsRef.current = conflict.latestSnapshot.entries.map(entry => ({ ...entry }));
+            baseSheetVersionRef.current = conflict.latestSnapshot.sheetVersion;
+            setConflict(null);
+            setMessage(validationMessage);
+            onSaveError(validationMessage);
+            return;
+        }
+
+        setRows(conflictMerge.rows);
+        setMessage('');
+        await saveRows(
+            mergedValidation.activeRows,
+            conflict.latestSnapshot.sheetVersion,
+            conflict.latestSnapshot.entries.map(entry => ({ ...entry })),
+        );
+    };
+
+    if (conflict && conflictMerge) {
+        return (
+            <section
+                id="user-sheet-editor"
+                className="flex min-h-0 min-w-0 flex-1 flex-col"
+                aria-labelledby="user-sheet-editor-title"
+            >
+                <UserSheetConflictResolver
+                    autoMergedCount={conflictMerge.autoMergedCount}
+                    conflicts={conflictMerge.conflicts}
+                    isApplying={isSaving}
+                    onApply={() => void applyConflictMerge()}
+                    onDismiss={() => setConflict(null)}
+                    onResolve={resolveConflict}
+                    onResolveAll={resolveAllConflicts}
+                    resolutions={conflict.resolutions}
+                />
+            </section>
+        );
+    }
+
     return (
-        <section className="flex min-h-0 flex-1 flex-col" aria-labelledby="user-sheet-editor-title">
+        <section
+            id="user-sheet-editor"
+            className="flex min-h-0 min-w-0 flex-1 flex-col"
+            aria-labelledby="user-sheet-editor-title"
+        >
             <header className="flex shrink-0 flex-wrap items-start justify-between gap-4 border-b border-slate-800 bg-slate-900/70 px-4 py-3.5 md:px-6">
                 <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
@@ -223,107 +369,17 @@ export function UserSheetEditor({
                 </div>
             )}
 
-            <div className="custom-scrollbar min-h-0 flex-1 overflow-auto">
-                <table className="w-full min-w-[1180px] border-separate border-spacing-0 text-left text-xs">
-                    <caption className="sr-only">
-                        디스코드 이름, 배틀태그, 역할별 티어와 특이사항을 편집하는 유저 시트
-                    </caption>
-                    <thead className="sticky top-0 z-20 bg-slate-900">
-                        <tr>
-                            <th className="sticky left-0 z-30 w-12 border-b border-r border-slate-700 bg-slate-900 px-2 py-2.5 text-center font-medium text-slate-600">#</th>
-                            {COLUMNS.map(column => (
-                                <th key={column.field} className={`${column.width} border-b border-r border-slate-700 px-2.5 py-2.5 font-medium text-slate-400`}>
-                                    {column.label}
-                                </th>
-                            ))}
-                            <th className="sticky right-0 z-30 w-40 min-w-40 whitespace-nowrap border-b border-slate-700 bg-slate-900 px-3 py-2.5 font-medium text-slate-500">
-                                상태
-                            </th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {rows.map((row, rowIndex) => {
-                            const error = validation.errors.get(row.id);
-                            return (
-                                <tr
-                                    key={row.id}
-                                    className={`group transition-colors hover:bg-white/[0.025] ${
-                                        error ? 'bg-rose-500/[0.045]' : ''
-                                    }`}
-                                >
-                                    <td className="sticky left-0 z-10 border-b border-r border-slate-800 bg-slate-900/95 px-2 py-1 text-center tabular-nums text-slate-600 group-hover:text-slate-400">
-                                        {rowIndex + 1}
-                                    </td>
-                                    {COLUMNS.map((column, columnIndex) => (
-                                        <td
-                                            key={column.field}
-                                            className={`border-b border-r p-0 ${
-                                                error && column.field === 'battleTag'
-                                                    ? 'border-rose-500/60 bg-rose-500/[0.08]'
-                                                    : 'border-slate-800'
-                                            }`}
-                                        >
-                                            <input
-                                                value={row[column.field]}
-                                                onChange={event => updateCell(row.id, column.field, event.target.value)}
-                                                onPaste={event => handlePaste(event, rowIndex, columnIndex)}
-                                                autoFocus={columnIndex === 0 && (
-                                                    focusRowId
-                                                        ? row.id === focusRowId
-                                                        : rowIndex === 0
-                                                )}
-                                                autoComplete="off"
-                                                spellCheck={false}
-                                                placeholder={rowIndex === 0 ? column.placeholder : ''}
-                                                aria-label={`${rowIndex + 1}행 ${column.label}`}
-                                                aria-invalid={column.field === 'battleTag' && Boolean(error)}
-                                                aria-describedby={column.field === 'battleTag' && error
-                                                    ? `user-sheet-row-error-${row.id}`
-                                                    : undefined}
-                                                className={`h-11 w-full bg-transparent px-2.5 text-slate-200 outline-none placeholder:text-slate-700 focus:bg-cyan-500/[0.06] focus:ring-2 focus:ring-inset ${
-                                                    error && column.field === 'battleTag'
-                                                        ? 'text-rose-100 focus:ring-rose-400/80'
-                                                        : 'focus:ring-cyan-400/70'
-                                                } ${column.field === 'battleTag' ? 'font-mono' : ''}`}
-                                            />
-                                        </td>
-                                    ))}
-                                    <td className="sticky right-0 z-10 w-40 min-w-40 border-b border-slate-800 bg-slate-900/95 px-2 py-1">
-                                        <div className="flex items-center justify-between gap-2">
-                                            <span
-                                                id={error ? `user-sheet-row-error-${row.id}` : undefined}
-                                                title={error ? ERROR_DETAILS[error] : undefined}
-                                                className={`inline-flex min-w-0 whitespace-nowrap rounded-full px-2 py-1 text-[11px] font-medium ${
-                                                    error
-                                                        ? 'bg-rose-500/15 text-rose-200'
-                                                        : isActiveUserSheetEntry(row)
-                                                            ? 'bg-emerald-500/10 text-emerald-300'
-                                                            : 'text-slate-700'
-                                                }`}
-                                            >
-                                                {error && <AlertCircle size={12} className="mr-1 shrink-0" aria-hidden="true" />}
-                                                {!error && isActiveUserSheetEntry(row) && (
-                                                    <CheckCircle2 size={12} className="mr-1 shrink-0" aria-hidden="true" />
-                                                )}
-                                                {error ? ERROR_LABELS[error] : isActiveUserSheetEntry(row) ? '준비 완료' : '빈 행'}
-                                            </span>
-                                            <button
-                                                type="button"
-                                                onClick={() => setRows(current => current.filter(item => item.id !== row.id))}
-                                                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-600 transition-colors hover:bg-rose-500/10 hover:text-rose-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/70"
-                                                aria-label={`${rowIndex + 1}행 삭제`}
-                                                title={`${rowIndex + 1}행 삭제`}
-                                            >
-                                                <Trash2 size={13} aria-hidden="true" />
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
-            </div>
+            <UserSheetEditorTable
+                disableAutoFocus={disableAutoFocus}
+                errors={validation.errors}
+                focusRowId={focusRowId}
+                onCellChange={updateCell}
+                onPaste={handlePaste}
+                onRemoveRow={(rowId) => {
+                    setRows(current => current.filter(item => item.id !== rowId));
+                }}
+                rows={rows}
+            />
 
             <footer className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-slate-800 bg-slate-900/95 px-4 py-3 md:px-6">
                 <div className="flex flex-wrap items-center gap-3 text-xs">

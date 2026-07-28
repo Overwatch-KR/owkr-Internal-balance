@@ -1,23 +1,55 @@
 export class ApiError extends Error {
+    readonly body: unknown;
+    readonly code?: string;
     readonly status: number;
     readonly retryable: boolean;
 
-    constructor(message: string, status: number) {
+    constructor(
+        message: string,
+        status: number,
+        options: { body?: unknown; code?: string } = {},
+    ) {
         super(message);
         this.name = 'ApiError';
+        this.body = options.body;
+        this.code = options.code;
         this.status = status;
         this.retryable = status === 0 || status === 408 || status === 429 || status >= 500;
     }
 }
 
-const readResponseError = async (response: Response): Promise<string> => {
-    const body = await response.json().catch(() => null) as { error?: string } | null;
-    if (body?.error) return body.error;
-    if (response.status === 401) return '로그인이 만료되었습니다. 다시 로그인해 주세요.';
-    if (response.status === 403) return '이 작업을 수행할 권한이 없습니다.';
-    if (response.status === 429) return '요청이 많습니다. 잠시 후 다시 시도해 주세요.';
-    if (response.status >= 500) return '서버가 요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.';
-    return '요청을 처리하지 못했습니다.';
+interface ApiErrorResponse {
+    body: unknown;
+    code?: string;
+    message: string;
+}
+
+const readResponseError = async (response: Response): Promise<ApiErrorResponse> => {
+    const body = await response.json().catch(() => null) as {
+        code?: unknown;
+        error?: unknown;
+    } | null;
+    const code = typeof body?.code === 'string' ? body.code : undefined;
+    if (typeof body?.error === 'string' && body.error.trim()) {
+        return { body, code, message: body.error };
+    }
+    if (response.status === 401) {
+        return { body, code, message: '로그인이 만료되었습니다. 다시 로그인해 주세요.' };
+    }
+    if (response.status === 403) {
+        return { body, code, message: '이 작업을 수행할 권한이 없습니다.' };
+    }
+    if (response.status === 429) {
+        return { body, code, message: '요청이 많습니다. 잠시 후 다시 시도해 주세요.' };
+    }
+    if (response.status >= 500) {
+        return {
+            body,
+            code,
+            message: '서버가 요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.',
+        };
+    }
+    return { body, code, message: '요청을 처리하지 못했습니다.' };
 };
 
 /**
@@ -34,7 +66,13 @@ export const requestJson = async <T>(
         if (error instanceof DOMException && error.name === 'AbortError') throw error;
         throw new ApiError('서버에 연결하지 못했습니다. 인터넷 연결을 확인해 주세요.', 0);
     }
-    if (!response.ok) throw new ApiError(await readResponseError(response), response.status);
+    if (!response.ok) {
+        const error = await readResponseError(response);
+        throw new ApiError(error.message, response.status, {
+            body: error.body,
+            code: error.code,
+        });
+    }
     if (response.status === 204) return undefined as T;
     try {
         return await response.json() as T;

@@ -12,6 +12,7 @@ describe('PlayerList', () => {
                 onRemovePlayer={vi.fn()}
                 onClearAll={vi.fn()}
                 csrfToken="csrf-token"
+                noteCacheScope="user-1"
                 userSheetByBattleTag={new Map()}
                 onOpenUserSheet={vi.fn()}
             />,

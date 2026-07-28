@@ -1,0 +1,178 @@
+import type { ClipboardEvent } from 'react';
+import { AlertCircle, CheckCircle2, Trash2 } from 'lucide-react';
+import {
+    isActiveUserSheetEntry,
+    type UserSheetDraftEntry,
+    type UserSheetValidationError,
+} from '../../utils/user-sheet';
+
+export type UserSheetEditorField =
+    | 'discordName'
+    | 'battleTag'
+    | 'tank'
+    | 'dps'
+    | 'support'
+    | 'note';
+
+interface UserSheetEditorTableProps {
+    disableAutoFocus: boolean;
+    errors: ReadonlyMap<string, UserSheetValidationError>;
+    focusRowId?: string;
+    onCellChange: (rowId: string, field: UserSheetEditorField, value: string) => void;
+    onPaste: (
+        event: ClipboardEvent<HTMLInputElement>,
+        startRowIndex: number,
+        startColumnIndex: number,
+    ) => void;
+    onRemoveRow: (rowId: string) => void;
+    rows: UserSheetDraftEntry[];
+}
+
+const COLUMNS: ReadonlyArray<{
+    field: UserSheetEditorField;
+    label: string;
+    placeholder: string;
+    width: string;
+}> = [
+    { field: 'discordName', label: '디스코드 이름', placeholder: '상민', width: 'min-w-40' },
+    { field: 'battleTag', label: '배틀태그', placeholder: 'Player#1234', width: 'min-w-56' },
+    { field: 'tank', label: '탱커', placeholder: '다3', width: 'min-w-28' },
+    { field: 'dps', label: '딜러', placeholder: '플1', width: 'min-w-28' },
+    { field: 'support', label: '힐러', placeholder: '마5', width: 'min-w-28' },
+    { field: 'note', label: '특이사항', placeholder: '마이크X', width: 'min-w-72' },
+];
+
+const ERROR_LABELS: Record<UserSheetValidationError, string> = {
+    INVALID_BATTLE_TAG: '형식 오류',
+    DUPLICATE_BATTLE_TAG: '중복',
+};
+
+const ERROR_DETAILS: Record<UserSheetValidationError, string> = {
+    INVALID_BATTLE_TAG: '배틀태그에 #과 숫자 태그를 포함해 주세요. 예: Player#1234',
+    DUPLICATE_BATTLE_TAG: '같은 배틀태그가 시트에 두 번 입력되어 있습니다.',
+};
+
+/**
+ * @description 전체 시트 편집기의 스프레드시트 표와 행별 검증 상태를 렌더링한다.
+ */
+export function UserSheetEditorTable({
+    disableAutoFocus,
+    errors,
+    focusRowId,
+    onCellChange,
+    onPaste,
+    onRemoveRow,
+    rows,
+}: UserSheetEditorTableProps) {
+    return (
+        <div className="custom-scrollbar min-h-0 flex-1 overflow-auto">
+            <table className="w-full min-w-[1180px] border-separate border-spacing-0 text-left text-xs">
+                <caption className="sr-only">
+                    디스코드 이름, 배틀태그, 역할별 티어와 특이사항을 편집하는 유저 시트
+                </caption>
+                <thead className="sticky top-0 z-20 bg-slate-900">
+                    <tr>
+                        <th className="sticky left-0 z-30 w-12 border-b border-r border-slate-700 bg-slate-900 px-2 py-2.5 text-center font-medium text-slate-600">#</th>
+                        {COLUMNS.map(column => (
+                            <th key={column.field} className={`${column.width} border-b border-r border-slate-700 px-2.5 py-2.5 font-medium text-slate-400`}>
+                                {column.label}
+                            </th>
+                        ))}
+                        <th className="sticky right-0 z-30 w-40 min-w-40 whitespace-nowrap border-b border-slate-700 bg-slate-900 px-3 py-2.5 font-medium text-slate-500">
+                            상태
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows.map((row, rowIndex) => {
+                        const error = errors.get(row.id);
+                        return (
+                            <tr
+                                key={row.id}
+                                className={`group transition-colors hover:bg-white/[0.025] ${
+                                    error ? 'bg-rose-500/[0.045]' : ''
+                                }`}
+                            >
+                                <td className="sticky left-0 z-10 border-b border-r border-slate-800 bg-slate-900/95 px-2 py-1 text-center tabular-nums text-slate-600 group-hover:text-slate-400">
+                                    {rowIndex + 1}
+                                </td>
+                                {COLUMNS.map((column, columnIndex) => (
+                                    <td
+                                        key={column.field}
+                                        className={`border-b border-r p-0 ${
+                                            error && column.field === 'battleTag'
+                                                ? 'border-rose-500/60 bg-rose-500/[0.08]'
+                                                : 'border-slate-800'
+                                        }`}
+                                    >
+                                        <input
+                                            value={row[column.field]}
+                                            onChange={event => onCellChange(
+                                                row.id,
+                                                column.field,
+                                                event.target.value,
+                                            )}
+                                            onPaste={event => onPaste(event, rowIndex, columnIndex)}
+                                            autoFocus={!disableAutoFocus && columnIndex === 0 && (
+                                                focusRowId
+                                                    ? row.id === focusRowId
+                                                    : rowIndex === 0
+                                            )}
+                                            autoComplete="off"
+                                            spellCheck={false}
+                                            placeholder={rowIndex === 0 ? column.placeholder : ''}
+                                            aria-label={`${rowIndex + 1}행 ${column.label}`}
+                                            aria-invalid={column.field === 'battleTag' && Boolean(error)}
+                                            aria-describedby={column.field === 'battleTag' && error
+                                                ? `user-sheet-row-error-${row.id}`
+                                                : undefined}
+                                            className={`h-11 w-full bg-transparent px-2.5 text-slate-200 outline-none placeholder:text-slate-700 focus:bg-cyan-500/[0.06] focus:ring-2 focus:ring-inset ${
+                                                error && column.field === 'battleTag'
+                                                    ? 'text-rose-100 focus:ring-rose-400/80'
+                                                    : 'focus:ring-cyan-400/70'
+                                            } ${column.field === 'battleTag' ? 'font-mono' : ''}`}
+                                        />
+                                    </td>
+                                ))}
+                                <td className="sticky right-0 z-10 w-40 min-w-40 border-b border-slate-800 bg-slate-900/95 px-2 py-1">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span
+                                            id={error ? `user-sheet-row-error-${row.id}` : undefined}
+                                            title={error ? ERROR_DETAILS[error] : undefined}
+                                            className={`inline-flex min-w-0 whitespace-nowrap rounded-full px-2 py-1 text-[11px] font-medium ${
+                                                error
+                                                    ? 'bg-rose-500/15 text-rose-200'
+                                                    : isActiveUserSheetEntry(row)
+                                                        ? 'bg-emerald-500/10 text-emerald-300'
+                                                        : 'text-slate-700'
+                                            }`}
+                                        >
+                                            {error && <AlertCircle size={12} className="mr-1 shrink-0" aria-hidden="true" />}
+                                            {!error && isActiveUserSheetEntry(row) && (
+                                                <CheckCircle2 size={12} className="mr-1 shrink-0" aria-hidden="true" />
+                                            )}
+                                            {error
+                                                ? ERROR_LABELS[error]
+                                                : isActiveUserSheetEntry(row)
+                                                    ? '준비 완료'
+                                                    : '빈 행'}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => onRemoveRow(row.id)}
+                                            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-600 transition-colors hover:bg-rose-500/10 hover:text-rose-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/70"
+                                            aria-label={`${rowIndex + 1}행 삭제`}
+                                            title={`${rowIndex + 1}행 삭제`}
+                                        >
+                                            <Trash2 size={13} aria-hidden="true" />
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        );
+                    })}
+                </tbody>
+            </table>
+        </div>
+    );
+}

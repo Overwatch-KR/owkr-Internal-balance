@@ -3,14 +3,18 @@ import { getTierScore } from '../constants';
 import type { Player, Rank, Tier } from '../types';
 import {
     addMissingPlayersToUserSheet,
+    fetchUserSheetConflictSnapshot,
     formatUserSheetChangeSummary,
     getUserSheetChangeSummary,
     mergeDiscordPlayersIntoUserSheet,
     normalizeUserSheetBattleTag,
     parseUserSheetRows,
+    saveUserSheet,
+    updateUserSheetEntry,
     validateUserSheetEntries,
     type UserSheetDraftEntry,
 } from './user-sheet';
+import { ApiError } from './api';
 
 const rank = (
     tier: Tier,
@@ -131,7 +135,7 @@ describe('mergeDiscordPlayersIntoUserSheet', () => {
 describe('addMissingPlayersToUserSheet', () => {
     it('정상 Discord 유저 정보를 신규 시트 추가 API 형식으로 전송한다', async () => {
         const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
-            JSON.stringify({ addedCount: 1, entries: [] }),
+            JSON.stringify({ addedCount: 1, entries: [], sheetVersion: 4 }),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
         ));
 
@@ -157,6 +161,79 @@ describe('addMissingPlayersToUserSheet', () => {
                 }],
             }),
         })]);
+    });
+});
+
+describe('user sheet conflict payloads', () => {
+    const draft: UserSheetDraftEntry = {
+        id: 'sheet-1',
+        discordName: '유저',
+        battleTag: 'Player#1234',
+        tank: '다3',
+        dps: '플2',
+        support: '마5',
+        note: '공유 메모',
+    };
+
+    it('전체 저장에 조회 당시 시트 버전을 포함한다', async () => {
+        const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
+            JSON.stringify({ entries: [], sheetVersion: 8 }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ));
+
+        await saveUserSheet([draft], 7, 'csrf-token');
+        const fetchCall = fetchMock.mock.calls[0];
+        fetchMock.mockRestore();
+
+        expect(fetchCall).toEqual(['/api/user-sheet', expect.objectContaining({
+            method: 'PUT',
+            body: JSON.stringify({ entries: [draft], sheetVersion: 7 }),
+        })]);
+    });
+
+    it('상세 저장에 조회 당시 행 수정 시각을 포함한다', async () => {
+        const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
+            JSON.stringify({ entries: [], sheetVersion: 9 }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+        ));
+
+        await updateUserSheetEntry(draft, 12345, 'csrf-token');
+        const fetchCall = fetchMock.mock.calls[0];
+        fetchMock.mockRestore();
+
+        expect(fetchCall).toEqual(['/api/user-sheet', expect.objectContaining({
+            method: 'PATCH',
+            body: JSON.stringify({ entry: draft, expectedUpdatedAt: 12345 }),
+        })]);
+    });
+
+    it('409 충돌 응답에 포함된 최신 스냅샷을 추가 요청 없이 사용한다', async () => {
+        const snapshot = {
+            entries: [{
+                ...draft,
+                createdAt: 1,
+                updatedAt: 2,
+                updatedByName: '관리자',
+            }],
+            sheetVersion: 9,
+        };
+        const fetchMock = vi.spyOn(globalThis, 'fetch');
+        const error = new ApiError('동시 수정 충돌', 409, {
+            code: 'USER_SHEET_CONFLICT',
+            body: { snapshot },
+        });
+
+        await expect(fetchUserSheetConflictSnapshot(error)).resolves.toEqual(snapshot);
+        expect(fetchMock).not.toHaveBeenCalled();
+        fetchMock.mockRestore();
+    });
+
+    it('배틀태그 중복 409는 병합 충돌로 취급하지 않는다', async () => {
+        const error = new ApiError('같은 배틀태그가 이미 등록되어 있습니다.', 409, {
+            code: 'DUPLICATE_BATTLE_TAG',
+        });
+
+        await expect(fetchUserSheetConflictSnapshot(error)).resolves.toBeNull();
     });
 });
 

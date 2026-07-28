@@ -23,6 +23,7 @@ import { useAuth, type AuthUser } from './hooks/use-auth';
 import { useMatchSession } from './hooks/use-match-session';
 import { useUserSheet } from './hooks/use-user-sheet';
 import { getErrorMessage } from './utils/api';
+import { clearPlayerNoteCache } from './utils/player-note';
 import type { Player, Role, SwapSource } from './types';
 import type { RosterImportMode } from './utils/player';
 import PlayerForm from './components/player/form';
@@ -247,7 +248,7 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
         try {
             const sheetResult = await addMissingPlayersToUserSheet(eligibleIncoming, csrfToken);
             sheetAddedCount = sheetResult.addedCount;
-            userSheet.updateEntries(sheetResult.entries);
+            userSheet.updateSnapshot(sheetResult);
         } catch (error) {
             const message = getErrorMessage(error, '유저 시트에 신규 참가자를 추가하지 못했습니다.');
             showDetailedError(
@@ -535,15 +536,16 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
     const userSheetByBattleTag = useMemo(() => new Map(
         userSheet.entries.map(entry => [normalizeUserSheetBattleTag(entry.battleTag), entry]),
     ), [userSheet.entries]);
-    const participantBattleTags = new Set(
-        participants.map(player => normalizeUserSheetBattleTag(player.name)),
-    );
+    const participantBattleTags = useMemo(() => new Set(
+        players.slice(0, 10).map(player => normalizeUserSheetBattleTag(player.name)),
+    ), [players]);
     const handleLogout = async () => {
         if (isLoggingOut) return;
         setIsLoggingOut(true);
         try {
             userSheet.close();
             await logout();
+            clearPlayerNoteCache(user.id);
         } catch (error) {
             showToast('error', getErrorMessage(error, '로그아웃하지 못했습니다. 다시 시도해 주세요.'));
             setIsLoggingOut(false);
@@ -631,6 +633,7 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
                             onRemovePlayer={handleRemovePlayer}
                             onClearAll={handleClearAll}
                             csrfToken={csrfToken}
+                            noteCacheScope={user.id}
                             userSheetByBattleTag={userSheetByBattleTag}
                             onOpenUserSheet={(battleTag) => {
                                 userSheet.open(battleTag);
@@ -673,9 +676,11 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
                             error={userSheet.error}
                             initialBattleTag={userSheet.selectedBattleTag}
                             isLoading={userSheet.isLoading}
+                            noteCacheScope={user.id}
                             participantBattleTags={participantBattleTags}
-                            onEntriesChange={(savedEntries, message) => {
-                                userSheet.updateEntries(savedEntries);
+                            sheetVersion={userSheet.sheetVersion}
+                            onEntriesChange={(snapshot, message) => {
+                                userSheet.updateSnapshot(snapshot);
                                 showToast('success', message);
                             }}
                             onRetry={() => void userSheet.retry()}
@@ -683,9 +688,10 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
                                 showDetailedError(message, {
                                     title: '유저 시트를 저장하지 못했습니다',
                                     description: message,
-                                    hint: '배틀태그 오류와 중복 행을 확인한 뒤 다시 저장해 주세요. 문제가 계속되면 저장소 연결 상태를 확인해 주세요.',
+                                    hint: '동시 수정 충돌은 표시되는 병합 화면에서 내 초안과 최신값을 비교해 해결할 수 있습니다. 그 외에는 배틀태그 오류와 중복 행을 확인해 주세요.',
                                 });
                             }}
+                            onSnapshotChange={userSheet.updateSnapshot}
                             onClose={userSheet.close}
                         />
                     </Suspense>
