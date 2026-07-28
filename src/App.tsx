@@ -581,7 +581,7 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
             >
                 <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[minmax(400px,460px)_minmax(0,1fr)] xl:items-start">
                     {/* Left Panel - Player Input */}
-                    <div className="flex min-h-0 min-w-0 flex-col gap-4 xl:min-h-[calc(100dvh-8rem)]">
+                    <div className="flex min-h-0 min-w-0 flex-col gap-4 xl:sticky xl:top-24 xl:h-[calc(100dvh-8rem)]">
                         <PlayerForm
                             players={players}
                             participantMentions={participantMentions}

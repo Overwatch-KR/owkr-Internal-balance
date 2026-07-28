@@ -156,7 +156,7 @@ const PlayerList = ({
     };
 
     return (
-        <section id="player-management" className="card flex min-h-[420px] scroll-mt-24 flex-1 flex-col overflow-hidden p-4 xl:min-h-[680px]" aria-labelledby="player-management-title">
+        <section id="player-management" className="card flex min-h-[420px] scroll-mt-24 flex-1 flex-col overflow-hidden p-4 xl:min-h-0" aria-labelledby="player-management-title">
             {/* Header */}
             <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-2">
@@ -245,7 +245,7 @@ const PlayerList = ({
                 ref={listScrollRef}
                 role="region"
                 aria-label={activeTab === 'participants' ? '참가자 스크롤 목록' : '대기열 스크롤 목록'}
-                className="custom-scrollbar scroll-region min-h-0 flex-1 pr-1 xl:overflow-y-auto xl:overscroll-contain xl:rounded-lg xl:border xl:border-slate-800/60 xl:bg-surface/20 xl:p-1.5"
+                className="custom-scrollbar scroll-region min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 max-xl:max-h-[32rem] xl:rounded-lg xl:border xl:border-slate-800/60 xl:bg-surface/20 xl:p-1.5"
             >
                 {activeTab === 'participants' ? (
                     <div
