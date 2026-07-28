@@ -9,6 +9,7 @@ import { getErrorMessage } from '../../../utils/api';
 interface PlayerNoteEditorProps {
     battleTag: string;
     csrfToken: string;
+    isEditable?: boolean;
 }
 
 interface PlayerNoteFormProps {
@@ -19,6 +20,21 @@ interface PlayerNoteFormProps {
     onChange: (value: string) => void;
     onSave: () => void;
 }
+
+interface PlayerNoteViewerProps {
+    content: string;
+}
+
+/**
+ * @description 저장된 개인 운영 메모를 입력 필드 없이 읽기 전용으로 표시한다.
+ */
+export const PlayerNoteViewer = ({ content }: PlayerNoteViewerProps) => (
+    <p className={`mt-3 whitespace-pre-wrap text-sm leading-relaxed ${
+        content ? 'text-slate-300' : 'text-slate-600'
+    }`}>
+        {content || '등록된 개인 운영 메모가 없습니다.'}
+    </p>
+);
 
 /**
  * @description 개인 운영 메모 입력과 현재 계정 전용 안내를 표시한다.
@@ -62,7 +78,11 @@ export const PlayerNoteForm = ({
 /**
  * @description BattleTag에 연결된 로그인 운영자 본인의 개인 메모를 조회·저장한다.
  */
-export const PlayerNoteEditor = ({ battleTag, csrfToken }: PlayerNoteEditorProps) => {
+export const PlayerNoteEditor = ({
+    battleTag,
+    csrfToken,
+    isEditable = true,
+}: PlayerNoteEditorProps) => {
     const [draft, setDraft] = useState('');
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
@@ -144,6 +164,8 @@ export const PlayerNoteEditor = ({ battleTag, csrfToken }: PlayerNoteEditorProps
             </div>
         );
     }
+
+    if (!isEditable) return <PlayerNoteViewer content={draft} />;
 
     return (
         <PlayerNoteForm

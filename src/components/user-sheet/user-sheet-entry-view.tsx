@@ -272,18 +272,26 @@ export function UserSheetEntryView({
                     <div className="flex items-start gap-2">
                         <NotebookPen size={15} className="mt-0.5 shrink-0 text-violet-300" aria-hidden="true" />
                         <div>
-                            <h3 id="user-sheet-private-note-title" className="text-xs font-medium text-violet-200">
-                                개인 운영 메모
-                            </h3>
+                            <div className="flex items-center gap-2">
+                                <h3 id="user-sheet-private-note-title" className="text-xs font-medium text-violet-200">
+                                    개인 운영 메모
+                                </h3>
+                                {!isEditing && (
+                                    <span className="rounded bg-violet-500/10 px-1.5 py-0.5 text-[10px] text-violet-300/70">
+                                        나만 보기
+                                    </span>
+                                )}
+                            </div>
                             <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
                                 현재 로그인한 관리자 본인에게만 보이며 특이사항 및 팀 결과와 분리됩니다.
                             </p>
                         </div>
                     </div>
                     <PlayerNoteEditor
-                        key={entry.battleTag}
+                        key={`${entry.battleTag}:${isEditing ? 'edit' : 'view'}`}
                         battleTag={entry.battleTag}
                         csrfToken={csrfToken}
+                        isEditable={isEditing}
                     />
                 </section>
             </div>
