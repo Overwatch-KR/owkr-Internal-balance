@@ -93,8 +93,17 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
     const [showAllRanks, setShowAllRanks] = useState(false);
     const [isLoggingOut, setIsLoggingOut] = useState(false);
     const [errorDetails, setErrorDetails] = useState<ErrorDetails | null>(null);
+    const [manualInputError, setManualInputError] = useState('');
     const userSheet = useUserSheet();
     const { dismissToast, showToast, toast } = useToast();
+    const resetPlayerInputs = useCallback(() => {
+        handleCancelEdit();
+        setManualInputError('');
+    }, [handleCancelEdit]);
+    const startEditingPlayer = useCallback((player: Player) => {
+        handleEditPlayer(player);
+        setManualInputError('');
+    }, [handleEditPlayer]);
     const showDetailedError = useCallback((message: string, details: ErrorDetails) => {
         showToast('error', message, {
             label: '자세히 보기',
@@ -105,11 +114,7 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
     const addPlayer = () => {
         if (!inputs.name.trim()) {
             setIsInputCollapsed(false);
-            showDetailedError('배틀태그를 입력해 주세요.', {
-                title: '참가자를 추가할 수 없습니다',
-                description: '참가자를 구분할 배틀태그가 비어 있습니다.',
-                hint: '배틀태그를 Player#1234 형식으로 입력한 뒤 다시 추가해 주세요.',
-            });
+            setManualInputError('배틀태그를 Player#1234 형식으로 입력해 주세요.');
             return;
         }
         const normalizedName = normalizePlayerName(inputs.name);
@@ -122,12 +127,9 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
                 player.id !== editingPlayerId
                 && normalizePlayerName(player.name) === normalizedName
             ));
-            showDetailedError('이미 추가된 플레이어입니다.', {
-                title: '배틀태그가 중복되었습니다',
-                description: `${duplicate?.discordName ?? duplicate?.name ?? inputs.name} 참가자가 이미 명단에 있습니다.`,
-                items: [inputs.name.trim()],
-                hint: '기존 참가자 카드를 수정하거나, 입력한 배틀태그가 맞는지 확인해 주세요.',
-            });
+            setManualInputError(
+                `${duplicate?.discordName ?? duplicate?.name ?? inputs.name} 참가자가 이미 명단에 있습니다. 기존 참가자 카드를 수정해 주세요.`,
+            );
             return;
         }
         const tTier = inputs.tTier;
@@ -137,7 +139,7 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
             ? undefined
             : players.find(player => player.id === editingPlayerId);
         if (editingPlayerId !== null && !existingPlayer) {
-            handleCancelEdit();
+            resetPlayerInputs();
             showDetailedError('수정할 참가자를 찾지 못했습니다.', {
                 title: '참가자 정보가 변경되었습니다',
                 description: '수정 중이던 참가자가 이미 삭제되었거나 명단이 갱신되었습니다.',
@@ -166,7 +168,7 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
             const battleTag = entry.match(/[^\s·]+#\d{4,}/)?.[0];
             return !battleTag || normalizePlayerName(battleTag) !== normalizePlayerName(newPlayer.name);
         }));
-        handleCancelEdit();
+        resetPlayerInputs();
         const hasOtherFailedParses = failedParses.some((entry) => {
             const battleTag = entry.match(/[^\s·]+#\d{4,}/)?.[0];
             return !battleTag || normalizePlayerName(battleTag) !== normalizePlayerName(newPlayer.name);
@@ -177,14 +179,13 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
         if (!hasOtherFailedParses && !hasOtherAvoidedWarnings) {
             setInputSummary(isEditing
                 ? `참가자 수정 완료 · ${newPlayer.discordName ?? newPlayer.name}`
-                : `참가자 1명 추가 완료 · ${newPlayer.discordName ?? newPlayer.name}`);
+                : willJoinWaitlist
+                    ? `대기열에 추가 완료 · ${newPlayer.discordName ?? newPlayer.name}`
+                    : `참가자 1명 추가 완료 · ${newPlayer.discordName ?? newPlayer.name}`);
             setIsInputCollapsed(true);
         } else {
             setIsInputCollapsed(false);
         }
-        showToast('success', isEditing
-            ? '참가자 정보를 수정했습니다.'
-            : willJoinWaitlist ? '정원 초과로 대기열에 추가했습니다.' : '플레이어를 추가했습니다.');
     };
 
     const commitRosterImport = async (
@@ -232,7 +233,7 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
             )));
         setSwapSource(null);
         setPendingRosterImport(null);
-        handleCancelEdit();
+        resetPlayerInputs();
 
         const summaryParts = mode === 'replace'
             ? [
@@ -245,7 +246,15 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
                 `갱신 ${reconciled.updatedCount}명`,
                 `신규 ${reconciled.addedCount}명`,
             ];
-        setInputSummary(`${mode === 'replace' ? '새 명단 적용' : '기존 명단에 추가'} · ${summaryParts.join(' · ')}`);
+        if (waitlistCount > 0) summaryParts.push(`대기열 ${waitlistCount}명`);
+        if (failedLines.length > 0 || importAvoidedRoleWarnings.length > 0) {
+            summaryParts.push(`보완 ${failedLines.length + importAvoidedRoleWarnings.length}명`);
+        }
+        if (shouldClearMatchResult && reconciled.players.length >= 10) {
+            summaryParts.push('팀 재배정 필요');
+        }
+        const importSummary = `${mode === 'replace' ? '새 명단 적용' : '기존 명단에 추가'} · ${summaryParts.join(' · ')}`;
+        setInputSummary(importSummary);
 
         if (hasIssues) {
             setIsInputCollapsed(false);
@@ -254,18 +263,6 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
             setPasteText('');
         }
 
-        const waitlistMessage = waitlistCount > 0
-            ? ` · ${waitlistCount}명은 대기열`
-            : '';
-        const failedMessage = failedLines.length > 0
-            ? ` · ${failedLines.length}명 직접 확인 필요`
-            : '';
-        const avoidedMessage = importAvoidedRoleWarnings.length > 0
-            ? ` · 비선호 중복 ${importAvoidedRoleWarnings.length}명 확인 필요`
-            : '';
-        const rematchMessage = shouldClearMatchResult && reconciled.players.length >= 10
-            ? ' · 팀을 다시 배정해 주세요'
-            : '';
         let sheetAddedCount = 0;
         try {
             const sheetResult = await addMissingPlayersToUserSheet(eligibleIncoming, csrfToken);
@@ -284,13 +281,9 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
             return;
         }
 
-        const sheetMessage = sheetAddedCount > 0
-            ? ` · 유저 시트에 신규 ${sheetAddedCount}명 추가`
-            : '';
-        const toastMessage = `${mode === 'replace' ? '새 참여 명단을 적용했습니다' : '기존 명단에 추가했습니다'}${waitlistMessage}${failedMessage}${avoidedMessage}${sheetMessage}${rematchMessage}`;
-        showToast(hasIssues ? 'info' : 'success', hasIssues
-            ? `${toastMessage} · 제외 항목은 입력창에서 바로 수정할 수 있습니다`
-            : toastMessage);
+        if (sheetAddedCount > 0) {
+            setInputSummary(`${importSummary} · 유저 시트 신규 ${sheetAddedCount}명`);
+        }
     };
 
     const applyPendingRosterImport = (mode: RosterImportMode) => {
@@ -347,9 +340,6 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
             avoidedRoleWarnings: importWarnings,
         });
         setIsInputCollapsed(false);
-        if (failedLines.length === 0 && importWarnings.length === 0) {
-            showToast('success', `${parsedPlayers.length}명을 읽었습니다. 명단 변경 내용을 확인해 주세요.`);
-        }
     };
 
     const handleRunMatching = async (): Promise<boolean> => {
@@ -387,7 +377,6 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
                 { teamIdx, role, index: idx },
             ));
             setSwapSource(null);
-            showToast('success', '포지션을 교체했습니다.');
         } else {
             setSwapSource({ teamIdx, role, index: idx });
         }
@@ -413,7 +402,7 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
             setSwapSource(null);
         }
         if (editingPlayerId === playerId) {
-            handleCancelEdit();
+            resetPlayerInputs();
         }
         showToast(
             'success',
@@ -456,7 +445,7 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
         setInputSummary('');
         setIsInputCollapsed(false);
         setSwapSource(null);
-        handleCancelEdit();
+        resetPlayerInputs();
         showToast('success', '전체 참여 명단을 비웠습니다.', {
             label: '실행 취소',
             onClick: () => {
@@ -554,8 +543,7 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
     });
     const handleInterruptGuide = useCallback(() => {
         handleDismissGuide();
-        showToast('info', '가이드가 중단되었습니다. 진행 단계를 저장했습니다.');
-    }, [handleDismissGuide, showToast]);
+    }, [handleDismissGuide]);
 
     // 참여 명단 (첫 10명)과 대기 명단 (나머지) 분리
     const participants = players.slice(0, 10);
@@ -664,13 +652,15 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
                             mode={inputMode}
                             onModeChange={setInputMode}
                             isEditing={editingPlayerId !== null}
-                            onCancelEdit={handleCancelEdit}
+                            manualInputError={manualInputError}
+                            onCancelEdit={resetPlayerInputs}
+                            onClearManualInputError={() => setManualInputError('')}
                             onRemovePlayer={handleRemovePlayer}
                         />
                         <PlayerList
                             participants={participants}
                             waitlist={waitlist}
-                            onEditPlayer={handleEditPlayer}
+                            onEditPlayer={startEditingPlayer}
                             onRemovePlayer={handleRemovePlayer}
                             onClearAll={handleClearAll}
                             csrfToken={csrfToken}

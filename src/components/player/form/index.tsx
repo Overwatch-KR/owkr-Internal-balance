@@ -62,7 +62,9 @@ interface PlayerFormProps {
     mode: PlayerInputMode;
     onModeChange: (mode: PlayerInputMode) => void;
     isEditing: boolean;
+    manualInputError: string;
     onCancelEdit: () => void;
+    onClearManualInputError: () => void;
     onRemovePlayer: (playerId: number) => void;
 }
 
@@ -93,10 +95,13 @@ const PlayerForm = ({
     mode,
     onModeChange,
     isEditing,
+    manualInputError,
     onCancelEdit,
+    onClearManualInputError,
     onRemovePlayer,
 }: PlayerFormProps) => {
     const reduceMotion = useReducedMotion();
+    const battleTagInputRef = React.useRef<HTMLInputElement>(null);
     const inputScrollRef = React.useRef<HTMLDivElement>(null);
     const animation = reduceMotion
         ? { duration: 0 }
@@ -120,12 +125,17 @@ const PlayerForm = ({
         inputScrollRef.current?.scrollTo({ top: 0 });
     }, [mode]);
 
+    React.useEffect(() => {
+        if (mode === 'manual' && manualInputError) battleTagInputRef.current?.focus();
+    }, [manualInputError, mode]);
+
     const handleRemoveFailed = (name: string) => {
         setFailedParses(prev => prev.filter(n => n !== name));
     };
 
     const handleUseForManualInput = (failedEntry: string, battleTag = failedEntry) => {
         setInputs(prev => ({ ...prev, name: battleTag }));
+        onClearManualInputError();
         onModeChange('manual');
     };
 
@@ -135,6 +145,7 @@ const PlayerForm = ({
             name: warning.playerName,
             discordName: warning.discordName ?? '',
         }));
+        onClearManualInputError();
         onModeChange('manual');
     };
 
@@ -433,17 +444,37 @@ const PlayerForm = ({
                                 <div>
                                     <label htmlFor="battle-tag" className="mb-2 block text-xs font-medium text-slate-400">배틀태그</label>
                                     <input
+                                        ref={battleTagInputRef}
                                         id="battle-tag"
                                         name="battle-tag"
                                         type="text"
                                         autoComplete="off"
                                         spellCheck={false}
                                         placeholder="예: 닉네임#1234…"
-                                        className="input-base"
+                                        className={`input-base ${
+                                            manualInputError
+                                                ? 'border-rose-500/60 focus:border-rose-400/80 focus:ring-rose-500/20'
+                                                : ''
+                                        }`}
                                         value={inputs.name}
-                                        onChange={(event) => setInputs(prev => ({ ...prev, name: event.target.value }))}
+                                        onChange={(event) => {
+                                            setInputs(prev => ({ ...prev, name: event.target.value }));
+                                            onClearManualInputError();
+                                        }}
                                         onKeyDown={(event) => event.key === 'Enter' && addPlayer()}
+                                        aria-invalid={Boolean(manualInputError)}
+                                        aria-describedby={manualInputError ? 'battle-tag-error' : undefined}
                                     />
+                                    {manualInputError && (
+                                        <p
+                                            id="battle-tag-error"
+                                            className="mt-2 flex items-start gap-1.5 text-xs leading-relaxed text-rose-300"
+                                            role="alert"
+                                        >
+                                            <AlertCircle size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+                                            <span>{manualInputError}</span>
+                                        </p>
+                                    )}
                                 </div>
                                 <div>
                                     <label htmlFor="discord-name" className="mb-2 block text-xs font-medium text-slate-400">디스코드 닉네임 (선택)</label>
@@ -488,8 +519,7 @@ const PlayerForm = ({
                                 <button
                                     type="button"
                                     onClick={addPlayer}
-                                    disabled={!inputs.name.trim()}
-                                    className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-40"
+                                    className="btn-primary w-full"
                                 >
                                     {isEditing ? '변경사항 저장' : '플레이어 추가'}
                                 </button>
