@@ -20,6 +20,21 @@ describe('PlayerNoteForm', () => {
         expect(markup).toContain('개인적으로 참고할 운영 메모를 입력하세요.');
         expect(markup).not.toContain('관리자 공유');
     });
+
+    it('시트 저장에 통합된 경우 별도 저장 버튼을 표시하지 않는다', () => {
+        const markup = renderToStaticMarkup(
+            <PlayerNoteForm
+                draft="개인 참고"
+                isDisabled={false}
+                isSaving={false}
+                message=""
+                onChange={vi.fn()}
+            />,
+        );
+
+        expect(markup).toContain('개인 참고');
+        expect(markup).not.toContain('저장</button>');
+    });
 });
 
 describe('PlayerNoteViewer', () => {
