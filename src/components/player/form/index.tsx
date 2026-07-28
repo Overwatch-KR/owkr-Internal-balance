@@ -22,6 +22,7 @@ import type { PlayerInputMode, PlayerInputs } from '../../../hooks/use-player-in
 import type { AvoidedRoleWarning } from '../../../utils/parser';
 import TierSelect from './tier-select';
 import ParticipantChecker from './participant-checker';
+import RosterPasteTextarea from './roster-paste-textarea';
 
 export type { PlayerInputMode } from '../../../hooks/use-player-input';
 
@@ -46,6 +47,8 @@ interface PlayerFormProps {
     setInputs: React.Dispatch<React.SetStateAction<PlayerFormProps['inputs']>>;
     addPlayer: () => void;
     pasteText: string;
+    pasteAvoidedRoleWarnings: AvoidedRoleWarning[];
+    isPasteValidationPending: boolean;
     onPasteTextChange: (value: string) => void;
     handlePaste: () => void;
     importPreview: RosterImportPreview | null;
@@ -53,8 +56,6 @@ interface PlayerFormProps {
     onCancelImport: () => void;
     failedParses: string[];
     setFailedParses: React.Dispatch<React.SetStateAction<string[]>>;
-    avoidedRoleWarnings: AvoidedRoleWarning[];
-    setAvoidedRoleWarnings: React.Dispatch<React.SetStateAction<AvoidedRoleWarning[]>>;
     isCollapsed: boolean;
     summary: string;
     onExpand: () => void;
@@ -68,6 +69,37 @@ interface PlayerFormProps {
     onRemovePlayer: (playerId: number) => void;
 }
 
+interface RosterImportActionProps {
+    hasWarnings: boolean;
+    hasPasteText: boolean;
+    isChecking: boolean;
+    onImport: () => void;
+}
+
+/**
+ * @description 입력 검사 중이거나 비선호 역할 중복이 있으면 명단 가져오기를 막는다.
+ */
+export const RosterImportAction = ({
+    hasWarnings,
+    hasPasteText,
+    isChecking,
+    onImport,
+}: RosterImportActionProps) => {
+    const isDisabled = !hasPasteText || isChecking || hasWarnings;
+
+    return (
+        <button
+            type="button"
+            onClick={onImport}
+            disabled={isDisabled}
+            aria-describedby={hasWarnings ? 'roster-paste-error-navigation' : undefined}
+            className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-40"
+        >
+            {isChecking ? '입력 확인 중…' : '명단 가져오기'}
+        </button>
+    );
+};
+
 /**
  * @description 참가자 입력을 제공하고 성공 후에는 한 줄 요약으로 접힌다.
  */
@@ -79,6 +111,8 @@ const PlayerForm = ({
     setInputs,
     addPlayer,
     pasteText,
+    pasteAvoidedRoleWarnings,
+    isPasteValidationPending,
     onPasteTextChange,
     handlePaste,
     importPreview,
@@ -86,8 +120,6 @@ const PlayerForm = ({
     onCancelImport,
     failedParses,
     setFailedParses,
-    avoidedRoleWarnings,
-    setAvoidedRoleWarnings,
     isCollapsed,
     summary,
     onExpand,
@@ -108,19 +140,15 @@ const PlayerForm = ({
         : { duration: 0.16, ease: [0.22, 1, 0.36, 1] as const };
     const collapsedMessage = isEditing
         ? `참가자 수정 중 · ${inputs.discordName || inputs.name}`
-        : failedParses.length > 0 || avoidedRoleWarnings.length > 0
-            ? `보완할 참가자 ${failedParses.length + avoidedRoleWarnings.length}명`
+        : failedParses.length > 0
+            ? `보완할 참가자 ${failedParses.length}명`
             : summary || '참가자 입력이 접혀 있습니다';
     const normalizedInputName = inputs.name.trim().toLowerCase();
     const isResolvingImportIssue = !isEditing && Boolean(normalizedInputName) && (
         failedParses.some(entry => (
             entry.match(/[^\s·]+#\d{4,}/)?.[0]?.toLowerCase() === normalizedInputName
         ))
-        || avoidedRoleWarnings.some(warning => (
-            warning.playerName.trim().toLowerCase() === normalizedInputName
-        ))
     );
-
     React.useEffect(() => {
         inputScrollRef.current?.scrollTo({ top: 0 });
     }, [mode]);
@@ -139,22 +167,12 @@ const PlayerForm = ({
         onModeChange('manual');
     };
 
-    const handleUseWarningForManualInput = (warning: AvoidedRoleWarning) => {
-        setInputs(prev => ({
-            ...prev,
-            name: warning.playerName,
-            discordName: warning.discordName ?? '',
-        }));
-        onClearManualInputError();
-        onModeChange('manual');
-    };
-
     return (
         <section id="player-input" className="card scroll-mt-24 shrink-0 overflow-hidden p-0" aria-label="참가자 입력">
             <div className="flex min-h-14 items-center gap-3 px-4 py-3">
                 <div className="flex min-w-0 flex-1 items-center gap-3">
                     {isCollapsed ? (
-                        failedParses.length > 0 || avoidedRoleWarnings.length > 0 ? (
+                        failedParses.length > 0 ? (
                             <AlertCircle size={17} className="shrink-0 text-amber-400" aria-hidden="true" />
                         ) : isEditing ? (
                             <Pencil size={17} className="shrink-0 text-cyan-300" aria-hidden="true" />
@@ -273,15 +291,11 @@ const PlayerForm = ({
                                         <Sparkles size={14} className="text-accent" aria-hidden="true" />
                                         디스코드 채팅 내용을 그대로 붙여넣으세요
                                     </label>
-                                    <textarea
-                                        id="discord-chat"
-                                        name="discord-chat"
-                                        autoComplete="off"
-                                        spellCheck={false}
-                                        className="input-base h-40 resize-none font-mono text-sm leading-relaxed"
-                                        placeholder={`예시:\nkimjungun#11853 다5/다1/다5\n학살#38848 다3/마4/다4\nAki#34981 미배치(골)/미배치(플)/플2\n재봉이#31207 그5!/마1!/마4`}
+                                    <RosterPasteTextarea
+                                        isValidationPending={isPasteValidationPending}
                                         value={pasteText}
-                                        onChange={(event) => onPasteTextChange(event.target.value)}
+                                        warnings={pasteAvoidedRoleWarnings}
+                                        onChange={onPasteTextChange}
                                     />
                                 </div>
                                 {importPreview ? (
@@ -405,14 +419,12 @@ const PlayerForm = ({
                                         </div>
                                     </div>
                                 ) : (
-                                    <button
-                                        type="button"
-                                        onClick={handlePaste}
-                                        disabled={!pasteText.trim()}
-                                        className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-40"
-                                    >
-                                        명단 가져오기
-                                    </button>
+                                    <RosterImportAction
+                                        hasWarnings={pasteAvoidedRoleWarnings.length > 0}
+                                        hasPasteText={Boolean(pasteText.trim())}
+                                        isChecking={isPasteValidationPending}
+                                        onImport={handlePaste}
+                                    />
                                 )}
                                 <p className="text-center text-xs text-slate-500">
                                     <span className="font-semibold text-amber-400">!</span>는 선호,
@@ -533,69 +545,6 @@ const PlayerForm = ({
                                 setMentionText={setParticipantMentions}
                                 onRemovePlayer={onRemovePlayer}
                             />
-                        )}
-
-                        {avoidedRoleWarnings.length > 0 && (
-                            <div
-                                className="mt-5 rounded-xl border border-amber-400/30 bg-amber-400/[0.08] p-4 animate-fade-in"
-                                role="status"
-                                aria-live="polite"
-                            >
-                                <div className="mb-2 flex items-center justify-between gap-3">
-                                    <div className="flex min-w-0 items-center gap-2">
-                                        <AlertCircle size={14} className="shrink-0 text-amber-300" aria-hidden="true" />
-                                        <span className="text-sm font-medium text-amber-200">
-                                            비선호 역할 보완 ({avoidedRoleWarnings.length}명)
-                                        </span>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => setAvoidedRoleWarnings([])}
-                                        className="min-h-8 shrink-0 rounded-md px-2 text-xs text-amber-100/60 transition-colors hover:bg-amber-400/10 hover:text-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
-                                    >
-                                        모두 닫기
-                                    </button>
-                                </div>
-                                <p className="mb-3 text-xs leading-relaxed text-slate-400">
-                                    비선호는 한 역할만 선택할 수 있습니다. 아래 참가자는 적용하지 않았으며 수동 입력에서 설정을 확인할 수 있습니다.
-                                </p>
-                                <div className="space-y-2">
-                                    {avoidedRoleWarnings.map((warning) => {
-                                        const displayName = warning.discordName || warning.playerName;
-
-                                        return (
-                                            <div
-                                                key={warning.playerName}
-                                                className="flex items-center justify-between gap-2 rounded-lg border border-amber-400/15 bg-amber-400/[0.04] px-3 py-2"
-                                            >
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleUseWarningForManualInput(warning)}
-                                                    className="min-w-0 flex-1 text-left text-xs text-slate-300 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
-                                                >
-                                                    <strong className="font-medium text-amber-100">{displayName}</strong>
-                                                    <span className="block break-all font-mono text-[11px] text-slate-500">
-                                                        {warning.playerName}
-                                                    </span>
-                                                    <span className="mt-1 block text-amber-200/80">
-                                                        비선호 {warning.avoidedRoleCount}개 감지 · 수동 입력으로 보완 →
-                                                    </span>
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setAvoidedRoleWarnings(previous => (
-                                                        previous.filter(item => item.playerName !== warning.playerName)
-                                                    ))}
-                                                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-amber-400/10 hover:text-amber-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
-                                                    aria-label={`${displayName} 비선호 중복 안내 닫기`}
-                                                >
-                                                    <X size={14} aria-hidden="true" />
-                                                </button>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
                         )}
 
                         {/* Failed Parses Section */}

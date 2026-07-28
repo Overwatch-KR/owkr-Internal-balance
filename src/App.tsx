@@ -4,7 +4,6 @@ import { SAMPLE_ROSTER, getTierScore } from './constants';
 import {
     getEligibleRosterPlayers,
     parseMultipleLines,
-    type AvoidedRoleWarning,
 } from './utils/parser';
 import { swapMatchResultPlayers } from './utils/balance';
 import {
@@ -67,7 +66,6 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
     } = useMatchSession(user.id);
 
     const {
-        avoidedRoleWarnings,
         editingPlayerId,
         editPlayer: handleEditPlayer,
         failedParses,
@@ -75,11 +73,12 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
         inputSummary,
         inputs,
         isInputCollapsed,
+        isPasteValidationPending,
         pasteText,
+        pasteAvoidedRoleWarnings,
         pendingRosterImport,
         resetInputs: handleCancelEdit,
         selectInputMode: handleGuideInputMode,
-        setAvoidedRoleWarnings,
         setFailedParses,
         setInputMode,
         setInputSummary,
@@ -161,9 +160,6 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
         setPlayers(prev => isEditing
             ? prev.map(player => player.id === editingPlayerId ? newPlayer : player)
             : [...prev, newPlayer]);
-        setAvoidedRoleWarnings(previous => previous.filter(
-            warning => normalizePlayerName(warning.playerName) !== normalizePlayerName(newPlayer.name),
-        ));
         setFailedParses(previous => previous.filter((entry) => {
             const battleTag = entry.match(/[^\s·]+#\d{4,}/)?.[0];
             return !battleTag || normalizePlayerName(battleTag) !== normalizePlayerName(newPlayer.name);
@@ -173,10 +169,7 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
             const battleTag = entry.match(/[^\s·]+#\d{4,}/)?.[0];
             return !battleTag || normalizePlayerName(battleTag) !== normalizePlayerName(newPlayer.name);
         });
-        const hasOtherAvoidedWarnings = avoidedRoleWarnings.some(
-            warning => normalizePlayerName(warning.playerName) !== normalizePlayerName(newPlayer.name),
-        );
-        if (!hasOtherFailedParses && !hasOtherAvoidedWarnings) {
+        if (!hasOtherFailedParses) {
             setInputSummary(isEditing
                 ? `참가자 수정 완료 · ${newPlayer.discordName ?? newPlayer.name}`
                 : willJoinWaitlist
@@ -191,19 +184,16 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
     const commitRosterImport = async (
         incoming: Player[],
         failedLines: string[],
-        importAvoidedRoleWarnings: AvoidedRoleWarning[],
         mode: RosterImportMode,
     ): Promise<void> => {
         const eligibleIncoming = getEligibleRosterPlayers(
             incoming,
             failedLines,
-            importAvoidedRoleWarnings,
+            [],
         );
         const reconciled = reconcilePlayers(players, eligibleIncoming, mode);
         const waitlistCount = Math.max(reconciled.players.length - 10, 0);
-        const hasIssues = failedLines.length > 0
-            || failedParses.length > 0
-            || importAvoidedRoleWarnings.length > 0;
+        const hasIssues = failedLines.length > 0 || failedParses.length > 0;
         const syncedResult = result
             ? syncMatchResultPlayerIdentities(result, reconciled.players)
             : null;
@@ -214,16 +204,6 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
         if (failedLines.length > 0) {
             setFailedParses(previous => [...new Set([...previous, ...failedLines])]);
         }
-        setAvoidedRoleWarnings((previous) => {
-            if (mode === 'replace') return importAvoidedRoleWarnings;
-            if (importAvoidedRoleWarnings.length === 0) return previous;
-
-            const byPlayerName = new Map(previous.map(warning => [warning.playerName, warning]));
-            for (const warning of importAvoidedRoleWarnings) {
-                byPlayerName.set(warning.playerName, warning);
-            }
-            return [...byPlayerName.values()];
-        });
         setPlayers(reconciled.players);
         setResult(shouldClearMatchResult ? null : syncedResult);
         setAlternatives(shouldClearMatchResult
@@ -247,8 +227,8 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
                 `신규 ${reconciled.addedCount}명`,
             ];
         if (waitlistCount > 0) summaryParts.push(`대기열 ${waitlistCount}명`);
-        if (failedLines.length > 0 || importAvoidedRoleWarnings.length > 0) {
-            summaryParts.push(`보완 ${failedLines.length + importAvoidedRoleWarnings.length}명`);
+        if (failedLines.length > 0) {
+            summaryParts.push(`보완 ${failedLines.length}명`);
         }
         if (shouldClearMatchResult && reconciled.players.length >= 10) {
             summaryParts.push('팀 재배정 필요');
@@ -291,7 +271,6 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
         void commitRosterImport(
             pendingRosterImport.incoming,
             pendingRosterImport.failedLines,
-            pendingRosterImport.avoidedRoleWarnings,
             mode,
         );
     };
@@ -306,6 +285,12 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
             return;
         }
         const { players: parsedPlayers, failedLines, avoidedRoleWarnings: importWarnings } = parseMultipleLines(pasteText);
+
+        if (importWarnings.length > 0) {
+            setPendingRosterImport(null);
+            setIsInputCollapsed(false);
+            return;
+        }
 
         if (parsedPlayers.length === 0) {
             if (failedLines.length > 0) {
@@ -325,19 +310,14 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
             return;
         }
 
-        if (
-            players.length === 0
-            && failedLines.length === 0
-            && importWarnings.length === 0
-        ) {
-            void commitRosterImport(parsedPlayers, failedLines, importWarnings, 'replace');
+        if (players.length === 0 && failedLines.length === 0) {
+            void commitRosterImport(parsedPlayers, failedLines, 'replace');
             return;
         }
 
         setPendingRosterImport({
             incoming: parsedPlayers,
             failedLines,
-            avoidedRoleWarnings: importWarnings,
         });
         setIsInputCollapsed(false);
     };
@@ -390,12 +370,8 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
         const previousResult = result;
         const previousAlternatives = alternatives;
         const previousSwapSource = swapSource;
-        const previousAvoidedRoleWarnings = avoidedRoleWarnings;
 
         setPlayers(prev => prev.filter(p => p.id !== playerId));
-        setAvoidedRoleWarnings(previous => previous.filter(
-            warning => normalizePlayerName(warning.playerName) !== normalizePlayerName(removedPlayer.name),
-        ));
         if (removedIndex < 10) {
             setResult(null);
             setAlternatives([]);
@@ -416,7 +392,6 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
                         restored.splice(Math.min(removedIndex, restored.length), 0, removedPlayer);
                         return restored;
                     });
-                    setAvoidedRoleWarnings(previousAvoidedRoleWarnings);
                     if (removedIndex < 10) {
                         setResult(previousResult);
                         setAlternatives(previousAlternatives);
@@ -435,13 +410,11 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
         const previousResult = result;
         const previousAlternatives = alternatives;
         const previousSwapSource = swapSource;
-        const previousAvoidedRoleWarnings = avoidedRoleWarnings;
 
         setPlayers([]);
         setResult(null);
         setAlternatives([]);
         setPendingRosterImport(null);
-        setAvoidedRoleWarnings([]);
         setInputSummary('');
         setIsInputCollapsed(false);
         setSwapSource(null);
@@ -450,7 +423,6 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
             label: '실행 취소',
             onClick: () => {
                 setPlayers(previousPlayers);
-                setAvoidedRoleWarnings(previousAvoidedRoleWarnings);
                 setInputSummary(previousInputSummary);
                 setIsInputCollapsed(previousInputCollapsed);
                 setResult(previousResult);
@@ -495,7 +467,7 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
             return;
         }
 
-        commitRosterImport(examplePlayers, [], [], 'replace');
+        commitRosterImport(examplePlayers, [], 'replace');
     };
 
     const handleSelectAlternative = (idx: number) => {
@@ -554,7 +526,7 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
         ? getEligibleRosterPlayers(
             pendingRosterImport.incoming,
             pendingRosterImport.failedLines,
-            pendingRosterImport.avoidedRoleWarnings,
+            [],
         )
         : [];
     const rosterImportPreview = pendingRosterImport
@@ -618,6 +590,8 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
                             setInputs={setInputs}
                             addPlayer={addPlayer}
                             pasteText={pasteText}
+                            pasteAvoidedRoleWarnings={pasteAvoidedRoleWarnings}
+                            isPasteValidationPending={isPasteValidationPending}
                             onPasteTextChange={updatePasteText}
                             handlePaste={handlePaste}
                             importPreview={rosterImportPreview ? {
@@ -627,11 +601,6 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
                                         id: `failed-${index}-${line}`,
                                         label: '등급 정보 확인',
                                         detail: line,
-                                    })),
-                                    ...(pendingRosterImport?.avoidedRoleWarnings ?? []).map(warning => ({
-                                        id: `avoided-${warning.playerName}`,
-                                        label: '비선호 역할 확인',
-                                        detail: `${warning.discordName ? `${warning.discordName} (${warning.playerName})` : warning.playerName} · 비선호 역할 ${warning.avoidedRoleCount}개`,
                                     })),
                                 ],
                                 addedCount: rosterImportPreview.addedCount,
@@ -643,8 +612,6 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
                             onCancelImport={() => setPendingRosterImport(null)}
                             failedParses={failedParses}
                             setFailedParses={setFailedParses}
-                            avoidedRoleWarnings={avoidedRoleWarnings}
-                            setAvoidedRoleWarnings={setAvoidedRoleWarnings}
                             isCollapsed={isInputCollapsed}
                             summary={inputSummary}
                             onExpand={() => setIsInputCollapsed(false)}
