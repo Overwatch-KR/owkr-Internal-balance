@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     AlertCircle,
     Loader2,
     MessageSquareText,
     NotebookPen,
     Pencil,
+    RefreshCcw,
     Save,
     Shield,
     Swords,
@@ -13,14 +14,18 @@ import {
 } from 'lucide-react';
 import {
     cleanUserSheetRank,
-    updateUserSheetEntry,
     validateUserSheetEntries,
     type UserSheetDraftEntry,
     type UserSheetEntry,
 } from '../../utils/user-sheet';
 import { getErrorMessage } from '../../utils/api';
+import { fetchPlayerNote } from '../../utils/player-note';
+import { saveUserSheetEntryWithPrivateNote } from '../../utils/user-sheet-entry-save';
 import { BattleTagCopyButton } from '../player/battle-tag-copy-button';
-import { PlayerNoteEditor } from '../player/list/player-note-editor';
+import {
+    PlayerNoteForm,
+    PlayerNoteViewer,
+} from '../player/list/player-note-editor';
 
 interface UserSheetEntryViewProps {
     csrfToken: string;
@@ -58,6 +63,40 @@ export function UserSheetEntryView({
     const [isEditing, setIsEditing] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [validationMessage, setValidationMessage] = useState('');
+    const [privateNoteContent, setPrivateNoteContent] = useState('');
+    const [privateNoteDraft, setPrivateNoteDraft] = useState('');
+    const [isPrivateNoteLoading, setIsPrivateNoteLoading] = useState(true);
+    const [privateNoteLoadError, setPrivateNoteLoadError] = useState<string | null>(null);
+    const privateNoteRequestIdRef = useRef(0);
+
+    const loadPrivateNote = useCallback(async () => {
+        const requestId = ++privateNoteRequestIdRef.current;
+        setIsPrivateNoteLoading(true);
+        setPrivateNoteLoadError(null);
+        try {
+            const note = await fetchPlayerNote(entry.battleTag);
+            if (requestId !== privateNoteRequestIdRef.current) return;
+            const content = note?.content ?? '';
+            setPrivateNoteContent(content);
+            setPrivateNoteDraft(content);
+        } catch (error) {
+            if (requestId !== privateNoteRequestIdRef.current) return;
+            setPrivateNoteLoadError(
+                getErrorMessage(error, '개인 운영 메모를 불러오지 못했습니다.'),
+            );
+        } finally {
+            if (requestId === privateNoteRequestIdRef.current) {
+                setIsPrivateNoteLoading(false);
+            }
+        }
+    }, [entry.battleTag]);
+
+    useEffect(() => {
+        void loadPrivateNote();
+        return () => {
+            privateNoteRequestIdRef.current += 1;
+        };
+    }, [loadPrivateNote]);
 
     const updateField = (field: EntryField, value: string) => {
         const nextValue = field === 'tank' || field === 'dps' || field === 'support'
@@ -69,12 +108,14 @@ export function UserSheetEntryView({
 
     const startEditing = () => {
         setDraft({ ...entry });
+        setPrivateNoteDraft(privateNoteContent);
         setValidationMessage('');
         setIsEditing(true);
     };
 
     const cancelEditing = () => {
         setDraft({ ...entry });
+        setPrivateNoteDraft(privateNoteContent);
         setValidationMessage('');
         setIsEditing(false);
     };
@@ -89,20 +130,40 @@ export function UserSheetEntryView({
             setValidationMessage(message);
             return;
         }
+        if (isPrivateNoteLoading || privateNoteLoadError) {
+            const message = privateNoteLoadError
+                ?? '개인 운영 메모를 불러온 뒤 다시 저장해 주세요.';
+            setValidationMessage(message);
+            return;
+        }
 
         setIsSaving(true);
         setValidationMessage('');
         try {
-            const savedEntries = await updateUserSheetEntry(draft, csrfToken);
+            const {
+                entries: savedEntries,
+                privateNoteContent: savedPrivateNoteContent,
+            } = await saveUserSheetEntryWithPrivateNote({
+                csrfToken,
+                entry: draft,
+                previousBattleTag: entry.battleTag,
+                previousPrivateNoteContent: privateNoteContent,
+                privateNoteContent: privateNoteDraft,
+            });
             const savedEntry = savedEntries.find(saved => saved.id === entry.id);
             if (savedEntry) setDraft({ ...savedEntry });
+            setPrivateNoteContent(savedPrivateNoteContent);
+            setPrivateNoteDraft(savedPrivateNoteContent);
             onSaved(
                 savedEntries,
                 `${savedEntry?.discordName || savedEntry?.battleTag || draft.battleTag} 정보를 수정했습니다.`,
             );
             setIsEditing(false);
         } catch (error) {
-            const message = getErrorMessage(error, '유저 정보를 수정하지 못했습니다.');
+            const message = getErrorMessage(
+                error,
+                '유저 정보와 개인 운영 메모를 저장하지 못했습니다.',
+            );
             setValidationMessage(message);
             onSaveError(message);
         } finally {
@@ -181,7 +242,12 @@ export function UserSheetEntryView({
                             <button
                                 type="button"
                                 onClick={() => void handleSave()}
-                                disabled={isSaving}
+                                disabled={
+                                    isSaving
+                                    || isPrivateNoteLoading
+                                    || Boolean(privateNoteLoadError)
+                                    || !csrfToken
+                                }
                                 className="btn-primary inline-flex min-h-9 items-center gap-2 disabled:opacity-40"
                             >
                                 {isSaving
@@ -287,12 +353,37 @@ export function UserSheetEntryView({
                             </p>
                         </div>
                     </div>
-                    <PlayerNoteEditor
-                        key={`${entry.battleTag}:${isEditing ? 'edit' : 'view'}`}
-                        battleTag={entry.battleTag}
-                        csrfToken={csrfToken}
-                        isEditable={isEditing}
-                    />
+                    {isPrivateNoteLoading ? (
+                        <div className="mt-2 flex items-center gap-2 rounded-lg bg-slate-950/40 px-3 py-3 text-xs text-slate-500">
+                            <Loader2 size={13} className="animate-spin" aria-hidden="true" />
+                            개인 운영 메모를 불러오고 있습니다
+                        </div>
+                    ) : privateNoteLoadError ? (
+                        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-200" role="alert">
+                            <span className="inline-flex items-center gap-2">
+                                <AlertCircle size={13} aria-hidden="true" />
+                                {privateNoteLoadError}
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => void loadPrivateNote()}
+                                className="inline-flex min-h-8 items-center gap-1.5 rounded-md px-2 font-medium hover:bg-amber-500/10"
+                            >
+                                <RefreshCcw size={12} aria-hidden="true" />
+                                다시 시도
+                            </button>
+                        </div>
+                    ) : isEditing ? (
+                        <PlayerNoteForm
+                            draft={privateNoteDraft}
+                            isDisabled={isSaving || !csrfToken}
+                            isSaving={isSaving}
+                            message=""
+                            onChange={setPrivateNoteDraft}
+                        />
+                    ) : (
+                        <PlayerNoteViewer content={privateNoteContent} />
+                    )}
                 </section>
             </div>
         </section>

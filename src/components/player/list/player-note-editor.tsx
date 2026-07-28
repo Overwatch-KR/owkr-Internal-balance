@@ -18,7 +18,7 @@ interface PlayerNoteFormProps {
     isSaving: boolean;
     message: string;
     onChange: (value: string) => void;
-    onSave: () => void;
+    onSave?: () => void;
 }
 
 interface PlayerNoteViewerProps {
@@ -60,18 +60,20 @@ export const PlayerNoteForm = ({
             className="input-base h-24 resize-none text-xs leading-relaxed"
             placeholder="개인적으로 참고할 운영 메모를 입력하세요."
         />
-        <div className="mt-2 flex items-center justify-between gap-2">
-            <p className="min-w-0 truncate text-[11px] text-slate-500" role="status">{message}</p>
-            <button
-                type="button"
-                onClick={onSave}
-                disabled={isDisabled || isSaving}
-                className="inline-flex min-h-8 shrink-0 items-center gap-1 rounded-md bg-cyan-500/15 px-2.5 text-xs font-medium text-cyan-200 transition-colors hover:bg-cyan-500/25 disabled:opacity-40"
-            >
-                {isSaving ? <Loader2 size={12} className="animate-spin" aria-hidden="true" /> : <Save size={12} aria-hidden="true" />}
-                저장
-            </button>
-        </div>
+        {onSave && (
+            <div className="mt-2 flex items-center justify-between gap-2">
+                <p className="min-w-0 truncate text-[11px] text-slate-500" role="status">{message}</p>
+                <button
+                    type="button"
+                    onClick={onSave}
+                    disabled={isDisabled || isSaving}
+                    className="inline-flex min-h-8 shrink-0 items-center gap-1 rounded-md bg-cyan-500/15 px-2.5 text-xs font-medium text-cyan-200 transition-colors hover:bg-cyan-500/25 disabled:opacity-40"
+                >
+                    {isSaving ? <Loader2 size={12} className="animate-spin" aria-hidden="true" /> : <Save size={12} aria-hidden="true" />}
+                    저장
+                </button>
+            </div>
+        )}
     </div>
 );
 
