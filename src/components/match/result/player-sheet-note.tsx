@@ -3,20 +3,35 @@ import { MessageSquareText } from 'lucide-react';
 interface PlayerSheetNoteProps {
     align: 'left' | 'right';
     note?: string;
+    reserveSpace?: boolean;
 }
 
 /**
- * @description 유저 시트의 특이사항을 화면에만 표시하고 이미지 내보내기에서는 제외한다.
+ * @description 유저 시트 특이사항을 표시하고 맞은편에만 내용이 있어도 같은 줄 높이를 확보한다.
  */
-export function PlayerSheetNote({ align, note }: PlayerSheetNoteProps) {
+export function PlayerSheetNote({
+    align,
+    note,
+    reserveSpace = false,
+}: PlayerSheetNoteProps) {
     const cleanNote = note?.trim();
-    if (!cleanNote) return null;
+    if (!cleanNote) {
+        return reserveSpace ? (
+            <div
+                data-match-note-spacer
+                data-exclude-export
+                data-html2canvas-ignore="true"
+                className="mt-1 h-[13px] shrink-0"
+                aria-hidden="true"
+            />
+        ) : null;
+    }
 
     return (
         <div
             data-exclude-export
             data-html2canvas-ignore="true"
-            className={`mt-1 flex min-w-0 items-center gap-1 text-[10px] leading-tight text-emerald-300/80 ${
+            className={`mt-1 flex min-h-[13px] min-w-0 shrink-0 items-center gap-1 text-[10px] leading-tight text-emerald-300/80 ${
                 align === 'right' ? 'justify-end' : 'justify-start'
             }`}
             title={`시트 특이사항: ${cleanNote}`}

@@ -52,6 +52,13 @@ const matchResult: MatchResultData = {
 
 const countMatches = (value: string, pattern: RegExp): number => value.match(pattern)?.length ?? 0;
 
+const expectEqualHeightMatchupSlots = (markup: string): void => {
+    expect(countMatches(markup, /data-matchup-row="true"/g)).toBe(5);
+    expect(countMatches(markup, /data-match-slot="true"/g)).toBe(10);
+    expect(countMatches(markup, /flex items-stretch gap-1\.5/g)).toBe(5);
+    expect(countMatches(markup, /relative flex min-w-0 flex-1/g)).toBe(10);
+};
+
 describe('MatchupTable', () => {
     it('스위치가 꺼지면 플레이어마다 현재 배정 티어 하나만 표시한다', () => {
         const markup = renderToStaticMarkup(
@@ -74,6 +81,7 @@ describe('MatchupTable', () => {
         expect(countMatches(markup, /data-match-player-id=/g)).toBe(10);
         expect(countMatches(markup, /data-match-team="1"/g)).toBe(5);
         expect(countMatches(markup, /data-match-team="2"/g)).toBe(5);
+        expectEqualHeightMatchupSlots(markup);
     });
 
     it('전체 티어를 탱커, 딜러, 지원 순서로 표시하고 현재 배정 역할만 강조한다', () => {
@@ -95,6 +103,7 @@ describe('MatchupTable', () => {
         expect(countMatches(markup, /ring-slate-300\/40/g)).toBe(4);
         expect(countMatches(markup, /data-tier="UNRANKED"/g)).toBe(10);
         expect(countMatches(markup, /<img /g)).toBe(0);
+        expectEqualHeightMatchupSlots(markup);
     });
 
     it('선호·비선호·미배치·마이크 상태와 긴 이름을 전체 티어 모드에 유지한다', () => {
@@ -115,7 +124,7 @@ describe('MatchupTable', () => {
         expect(markup).toContain('VeryLongBattleTag1#12345');
     });
 
-    it('배틀태그가 일치하는 유저 시트 특이사항을 화면에만 표시한다', () => {
+    it('한쪽에만 특이사항이 있어도 토글 양쪽 상태에서 맞은편에 같은 줄 높이를 확보한다', () => {
         const sheetEntry: UserSheetEntry = {
             id: 'sheet-1',
             discordName: '시트 닉네임',
@@ -128,21 +137,28 @@ describe('MatchupTable', () => {
             updatedAt: 1,
             updatedByName: '관리자',
         };
-        const markup = renderToStaticMarkup(
-            <MatchupTable
-                matchResult={matchResult}
-                onSlotClick={() => undefined}
-                swapSource={null}
-                userSheetByBattleTag={new Map([
-                    [sheetEntry.battleTag.toLowerCase(), sheetEntry],
-                ])}
-            />,
-        );
+        for (const showAllRanks of [false, true]) {
+            const markup = renderToStaticMarkup(
+                <MatchupTable
+                    matchResult={matchResult}
+                    onSlotClick={() => undefined}
+                    swapSource={null}
+                    showAllRanks={showAllRanks}
+                    userSheetByBattleTag={new Map([
+                        [sheetEntry.battleTag.toLowerCase(), sheetEntry],
+                    ])}
+                />,
+            );
 
-        expect(markup).toContain('탱커 픽 조율 필요');
-        expect(markup).toContain('aria-label="시트 특이사항: 탱커 픽 조율 필요"');
-        expect(markup).toMatch(
-            /data-exclude-export="true" data-html2canvas-ignore="true"[^>]*>[\s\S]*탱커 픽 조율 필요/,
-        );
+            expect(markup).toContain('탱커 픽 조율 필요');
+            expect(markup).toContain('aria-label="시트 특이사항: 탱커 픽 조율 필요"');
+            expect(countMatches(markup, /data-match-note-spacer="true"/g)).toBe(1);
+            expect(markup).toMatch(
+                /data-match-note-spacer="true" data-exclude-export="true" data-html2canvas-ignore="true"/,
+            );
+            expect(markup).toMatch(
+                /data-exclude-export="true" data-html2canvas-ignore="true"[^>]*>[\s\S]*탱커 픽 조율 필요/,
+            );
+        }
     });
 });

@@ -253,16 +253,19 @@ const MatchupTable = ({
                 const sheetNoteB = userSheetByBattleTag?.get(
                     normalizeUserSheetBattleTag(row.playerB.name),
                 )?.note;
+                const rowHasSheetNote = Boolean(sheetNoteA?.trim() || sheetNoteB?.trim());
 
                 return (
                     <div
                         key={`${row.role}-${row.arrayIndex}`}
                         id={row.role === 'TANK' ? 'matchup-tank-row' : undefined}
-                        className="flex items-center gap-1.5 rounded-lg border border-slate-700/70 bg-slate-950/20"
+                        data-matchup-row
+                        className="flex items-stretch gap-1.5 rounded-lg border border-slate-700/70 bg-slate-950/20"
                     >
                         {/* TEAM 1 슬롯 */}
                         <div
-                            className="flex-1 relative min-w-0"
+                            data-match-slot
+                            className="relative flex min-w-0 flex-1"
                             onMouseEnter={() => setHoveredSlot(slotKeyA)}
                             onMouseLeave={() => setHoveredSlot(null)}
                             onFocus={() => setHoveredSlot(slotKeyA)}
@@ -335,7 +338,11 @@ const MatchupTable = ({
                                             </div>
                                         </>
                                     )}
-                                    <PlayerSheetNote note={sheetNoteA} align="right" />
+                                    <PlayerSheetNote
+                                        note={sheetNoteA}
+                                        align="right"
+                                        reserveSpace={rowHasSheetNote}
+                                    />
                                 </div>
                                 </motion.div>
                             </AnimatePresence>
@@ -349,7 +356,8 @@ const MatchupTable = ({
 
                         {/* TEAM 2 슬롯 */}
                         <div
-                            className="flex-1 relative min-w-0"
+                            data-match-slot
+                            className="relative flex min-w-0 flex-1"
                             onMouseEnter={() => setHoveredSlot(slotKeyB)}
                             onMouseLeave={() => setHoveredSlot(null)}
                             onFocus={() => setHoveredSlot(slotKeyB)}
@@ -422,7 +430,11 @@ const MatchupTable = ({
                                             </div>
                                         </>
                                     )}
-                                    <PlayerSheetNote note={sheetNoteB} align="left" />
+                                    <PlayerSheetNote
+                                        note={sheetNoteB}
+                                        align="left"
+                                        reserveSpace={rowHasSheetNote}
+                                    />
                                 </div>
                                 </motion.div>
                             </AnimatePresence>
