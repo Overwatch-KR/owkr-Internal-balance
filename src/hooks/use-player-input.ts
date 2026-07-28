@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Player, Tier } from '../types';
-import type { AvoidedRoleWarning } from '../utils/parser';
+import { parseMultipleLines, type AvoidedRoleWarning } from '../utils/parser';
 
 export type PlayerInputMode = 'discord' | 'manual' | 'mentions';
+
+const ROSTER_PASTE_VALIDATION_DELAY_MS = 350;
 
 export interface PlayerInputs {
     name: string;
@@ -25,7 +27,6 @@ export interface PlayerInputs {
 export interface PendingRosterImport {
     incoming: Player[];
     failedLines: string[];
-    avoidedRoleWarnings: AvoidedRoleWarning[];
 }
 
 /**
@@ -65,7 +66,6 @@ export const usePlayerInput = (initialPlayerCount: number) => {
     const [inputs, setInputs] = useState(createDefaultPlayerInputs);
     const [pasteText, setPasteText] = useState('');
     const [failedParses, setFailedParses] = useState<string[]>([]);
-    const [avoidedRoleWarnings, setAvoidedRoleWarnings] = useState<AvoidedRoleWarning[]>([]);
     const [pendingRosterImport, setPendingRosterImport] = useState<PendingRosterImport | null>(null);
     const [inputMode, setInputMode] = useState<PlayerInputMode>('discord');
     const [editingPlayerId, setEditingPlayerId] = useState<number | null>(null);
@@ -73,6 +73,33 @@ export const usePlayerInput = (initialPlayerCount: number) => {
     const [inputSummary, setInputSummary] = useState(
         initialPlayerCount > 0 ? `저장된 참가자 ${initialPlayerCount}명 불러옴` : '',
     );
+    const [pasteValidation, setPasteValidation] = useState<{
+        sourceText: string;
+        warnings: AvoidedRoleWarning[];
+    }>({
+        sourceText: '',
+        warnings: [],
+    });
+
+    useEffect(() => {
+        if (!pasteText.trim()) return;
+
+        const timeoutId = window.setTimeout(() => {
+            const { avoidedRoleWarnings: warnings } = parseMultipleLines(pasteText);
+            setPasteValidation({
+                sourceText: pasteText,
+                warnings,
+            });
+        }, ROSTER_PASTE_VALIDATION_DELAY_MS);
+
+        return () => window.clearTimeout(timeoutId);
+    }, [pasteText]);
+
+    const isPasteValidationPending = Boolean(pasteText.trim())
+        && pasteValidation.sourceText !== pasteText;
+    const pasteAvoidedRoleWarnings = pasteText.trim() && !isPasteValidationPending
+        ? pasteValidation.warnings
+        : [];
 
     useEffect(() => {
         const hasUnsavedInput = Boolean(
@@ -132,7 +159,6 @@ export const usePlayerInput = (initialPlayerCount: number) => {
     }, []);
 
     return {
-        avoidedRoleWarnings,
         editingPlayerId,
         editPlayer,
         failedParses,
@@ -141,10 +167,11 @@ export const usePlayerInput = (initialPlayerCount: number) => {
         inputs,
         isInputCollapsed,
         pasteText,
+        pasteAvoidedRoleWarnings,
+        isPasteValidationPending,
         pendingRosterImport,
         resetInputs,
         selectInputMode,
-        setAvoidedRoleWarnings,
         setEditingPlayerId,
         setFailedParses,
         setInputMode,
