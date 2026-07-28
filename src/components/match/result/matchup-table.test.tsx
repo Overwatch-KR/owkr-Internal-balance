@@ -115,7 +115,7 @@ describe('MatchupTable', () => {
         expect(markup).toContain('VeryLongBattleTag1#12345');
     });
 
-    it('배틀태그가 일치하는 유저 시트 특이사항을 대진표에 표시한다', () => {
+    it('배틀태그가 일치하는 유저 시트 특이사항을 화면에만 표시한다', () => {
         const sheetEntry: UserSheetEntry = {
             id: 'sheet-1',
             discordName: '시트 닉네임',
@@ -141,6 +141,8 @@ describe('MatchupTable', () => {
 
         expect(markup).toContain('탱커 픽 조율 필요');
         expect(markup).toContain('aria-label="시트 특이사항: 탱커 픽 조율 필요"');
-        expect(markup).not.toContain('data-exclude-export="true">탱커 픽 조율 필요');
+        expect(markup).toMatch(
+            /data-exclude-export="true" data-html2canvas-ignore="true"[^>]*>[\s\S]*탱커 픽 조율 필요/,
+        );
     });
 });
