@@ -26,21 +26,21 @@ export const useCopyImage = (ref: RefObject<HTMLDivElement | null>) => {
     const handleCopyImage = useCallback(async () => {
         if (!ref.current) return;
         const captureElement = ref.current;
-        const captureStyle = window.getComputedStyle(captureElement);
-        const contentWidth = captureElement.clientWidth
-            - Number.parseFloat(captureStyle.paddingLeft)
-            - Number.parseFloat(captureStyle.paddingRight);
-        const contentHeight = captureElement.clientHeight
-            - Number.parseFloat(captureStyle.paddingTop)
-            - Number.parseFloat(captureStyle.paddingBottom);
-        const exportWidth = contentWidth + (EXPORT_PADDING * 2);
-        const exportHeight = contentHeight + (EXPORT_PADDING * 2);
         setCopyStatus('loading');
         captureElement.setAttribute('data-exporting', 'true');
 
         try {
             await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
 
+            const captureStyle = window.getComputedStyle(captureElement);
+            const contentWidth = captureElement.clientWidth
+                - Number.parseFloat(captureStyle.paddingLeft)
+                - Number.parseFloat(captureStyle.paddingRight);
+            const contentHeight = captureElement.clientHeight
+                - Number.parseFloat(captureStyle.paddingTop)
+                - Number.parseFloat(captureStyle.paddingBottom);
+            const exportWidth = contentWidth + (EXPORT_PADDING * 2);
+            const exportHeight = contentHeight + (EXPORT_PADDING * 2);
             const dataUrl = await toPng(captureElement, {
                 backgroundColor: '#0b0c10',
                 width: exportWidth,
