@@ -162,11 +162,19 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
         setAvoidedRoleWarnings(previous => previous.filter(
             warning => normalizePlayerName(warning.playerName) !== normalizePlayerName(newPlayer.name),
         ));
+        setFailedParses(previous => previous.filter((entry) => {
+            const battleTag = entry.match(/[^\s·]+#\d{4,}/)?.[0];
+            return !battleTag || normalizePlayerName(battleTag) !== normalizePlayerName(newPlayer.name);
+        }));
         handleCancelEdit();
+        const hasOtherFailedParses = failedParses.some((entry) => {
+            const battleTag = entry.match(/[^\s·]+#\d{4,}/)?.[0];
+            return !battleTag || normalizePlayerName(battleTag) !== normalizePlayerName(newPlayer.name);
+        });
         const hasOtherAvoidedWarnings = avoidedRoleWarnings.some(
             warning => normalizePlayerName(warning.playerName) !== normalizePlayerName(newPlayer.name),
         );
-        if (failedParses.length === 0 && !hasOtherAvoidedWarnings) {
+        if (!hasOtherFailedParses && !hasOtherAvoidedWarnings) {
             setInputSummary(isEditing
                 ? `참가자 수정 완료 · ${newPlayer.discordName ?? newPlayer.name}`
                 : `참가자 1명 추가 완료 · ${newPlayer.discordName ?? newPlayer.name}`);
@@ -629,13 +637,13 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
                                 issues: [
                                     ...(pendingRosterImport?.failedLines ?? []).map((line, index) => ({
                                         id: `failed-${index}-${line}`,
-                                        label: '형식 오류',
+                                        label: '등급 정보 확인',
                                         detail: line,
                                     })),
                                     ...(pendingRosterImport?.avoidedRoleWarnings ?? []).map(warning => ({
                                         id: `avoided-${warning.playerName}`,
-                                        label: '비선호 중복',
-                                        detail: `${warning.discordName ? `${warning.discordName} (${warning.playerName})` : warning.playerName} · 비선호 역할 ${warning.avoidedRoleCount}개 · 자동 추가 제외`,
+                                        label: '비선호 역할 확인',
+                                        detail: `${warning.discordName ? `${warning.discordName} (${warning.playerName})` : warning.playerName} · 비선호 역할 ${warning.avoidedRoleCount}개`,
                                     })),
                                 ],
                                 addedCount: rosterImportPreview.addedCount,

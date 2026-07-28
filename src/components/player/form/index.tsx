@@ -104,8 +104,17 @@ const PlayerForm = ({
     const collapsedMessage = isEditing
         ? `참가자 수정 중 · ${inputs.discordName || inputs.name}`
         : failedParses.length > 0 || avoidedRoleWarnings.length > 0
-            ? `입력 항목 ${failedParses.length + avoidedRoleWarnings.length}명 확인 필요`
+            ? `보완할 참가자 ${failedParses.length + avoidedRoleWarnings.length}명`
             : summary || '참가자 입력이 접혀 있습니다';
+    const normalizedInputName = inputs.name.trim().toLowerCase();
+    const isResolvingImportIssue = !isEditing && Boolean(normalizedInputName) && (
+        failedParses.some(entry => (
+            entry.match(/[^\s·]+#\d{4,}/)?.[0]?.toLowerCase() === normalizedInputName
+        ))
+        || avoidedRoleWarnings.some(warning => (
+            warning.playerName.trim().toLowerCase() === normalizedInputName
+        ))
+    );
 
     React.useEffect(() => {
         inputScrollRef.current?.scrollTo({ top: 0 });
@@ -117,7 +126,6 @@ const PlayerForm = ({
 
     const handleUseForManualInput = (failedEntry: string, battleTag = failedEntry) => {
         setInputs(prev => ({ ...prev, name: battleTag }));
-        setFailedParses(prev => prev.filter(entry => entry !== failedEntry));
         onModeChange('manual');
     };
 
@@ -127,9 +135,6 @@ const PlayerForm = ({
             name: warning.playerName,
             discordName: warning.discordName ?? '',
         }));
-        setAvoidedRoleWarnings(previous => (
-            previous.filter(item => item.playerName !== warning.playerName)
-        ));
         onModeChange('manual');
     };
 
@@ -278,10 +283,12 @@ const PlayerForm = ({
                                             <ListChecks size={17} className="mt-0.5 shrink-0 text-cyan-300" aria-hidden="true" />
                                             <div className="min-w-0">
                                                 <p className="text-sm font-semibold text-cyan-100">
-                                                    가져올 {importPreview.incomingCount}명 확인
+                                                    바로 적용할 수 있는 참가자 {importPreview.incomingCount}명
                                                 </p>
                                                 <p className="mt-1 text-xs leading-relaxed text-slate-400">
-                                                    새 명단으로 교체하면 붙여넣은 순서대로 참가자와 대기열을 다시 구성합니다.
+                                                    {importPreview.issues.length > 0
+                                                        ? `${importPreview.issues.length}명은 적용 후 입력창에서 이어서 보완할 수 있습니다.`
+                                                        : '붙여넣은 순서대로 참가자와 대기열을 다시 구성합니다.'}
                                                 </p>
                                             </div>
                                         </div>
@@ -326,15 +333,19 @@ const PlayerForm = ({
                                         </dl>
 
                                         {importPreview.issues.length > 0 && (
-                                            <div className="mt-3 rounded-xl border border-rose-500/30 bg-rose-500/[0.08] p-3" role="alert">
+                                            <div
+                                                className="mt-3 rounded-xl border border-amber-400/30 bg-amber-400/[0.08] p-3"
+                                                role="status"
+                                                aria-live="polite"
+                                            >
                                                 <div className="flex items-start gap-2">
-                                                    <AlertCircle size={15} className="mt-0.5 shrink-0 text-rose-300" aria-hidden="true" />
+                                                    <AlertCircle size={15} className="mt-0.5 shrink-0 text-amber-300" aria-hidden="true" />
                                                     <div className="min-w-0">
-                                                        <p className="text-xs font-semibold text-rose-200">
-                                                            자동 추가하지 않는 항목 {importPreview.issues.length}개
+                                                        <p className="text-xs font-semibold text-amber-200">
+                                                            보완이 필요한 참가자 {importPreview.issues.length}명
                                                         </p>
-                                                        <p className="mt-1 text-[11px] leading-relaxed text-rose-200/70">
-                                                            원문을 수정한 뒤 다시 가져오거나, 나머지 정상 유저만 먼저 적용할 수 있습니다.
+                                                        <p className="mt-1 text-[11px] leading-relaxed text-amber-100/65">
+                                                            가져오기 실패가 아닙니다. 인식된 참가자를 먼저 적용한 뒤 아래 항목만 확인해 주세요.
                                                         </p>
                                                     </div>
                                                 </div>
@@ -342,9 +353,9 @@ const PlayerForm = ({
                                                     {importPreview.issues.map(issue => (
                                                         <li
                                                             key={issue.id}
-                                                            className="rounded-lg border border-rose-500/15 bg-slate-950/35 px-3 py-2"
+                                                            className="rounded-lg border border-amber-400/15 bg-slate-950/35 px-3 py-2"
                                                         >
-                                                            <span className="block whitespace-nowrap text-[10px] font-semibold text-rose-300">
+                                                            <span className="block whitespace-nowrap text-[10px] font-semibold text-amber-300">
                                                                 {issue.label}
                                                             </span>
                                                             <span className="mt-0.5 block break-words text-xs leading-relaxed text-slate-300">
@@ -362,14 +373,16 @@ const PlayerForm = ({
                                                 onClick={() => onApplyImport('replace')}
                                                 className="btn-primary w-full"
                                             >
-                                                정상 유저 {importPreview.incomingCount}명으로 교체
+                                                {importPreview.issues.length > 0
+                                                    ? `인식된 ${importPreview.incomingCount}명 먼저 적용`
+                                                    : `${importPreview.incomingCount}명으로 명단 교체`}
                                             </button>
                                             <button
                                                 type="button"
                                                 onClick={() => onApplyImport('append')}
                                                 className="btn-ghost w-full border border-slate-700/70"
                                             >
-                                                정상 유저만 기존 명단에 추가
+                                                인식된 {importPreview.incomingCount}명 기존 명단에 추가
                                             </button>
                                             <button
                                                 type="button"
@@ -400,18 +413,20 @@ const PlayerForm = ({
                         {/* Manual Input Mode */}
                         {mode === 'manual' && (
                             <div className="space-y-4 animate-fade-in">
-                                {isEditing && (
+                                {(isEditing || isResolvingImportIssue) && (
                                     <div className="flex items-center gap-3 rounded-lg border border-cyan-500/25 bg-cyan-500/10 px-3 py-2" role="status">
                                         <Pencil size={14} className="shrink-0 text-cyan-300" aria-hidden="true" />
                                         <p className="min-w-0 flex-1 truncate text-xs font-medium text-cyan-100">
-                                            참가자 정보 수정 중
+                                            {isEditing
+                                                ? '참가자 정보 수정 중'
+                                                : `${inputs.discordName || inputs.name} 정보 보완 중`}
                                         </p>
                                         <button
                                             type="button"
                                             onClick={onCancelEdit}
                                             className="inline-flex min-h-8 shrink-0 touch-manipulation items-center rounded-md px-2 text-xs text-slate-300 transition-colors hover:bg-white/5 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70"
                                         >
-                                            수정 취소
+                                            {isEditing ? '수정 취소' : '보완 취소'}
                                         </button>
                                     </div>
                                 )}
@@ -491,24 +506,28 @@ const PlayerForm = ({
                         )}
 
                         {avoidedRoleWarnings.length > 0 && (
-                            <div className="mt-5 rounded-xl border border-rose-500/30 bg-rose-500/10 p-4 animate-fade-in" role="alert">
+                            <div
+                                className="mt-5 rounded-xl border border-amber-400/30 bg-amber-400/[0.08] p-4 animate-fade-in"
+                                role="status"
+                                aria-live="polite"
+                            >
                                 <div className="mb-2 flex items-center justify-between gap-3">
                                     <div className="flex min-w-0 items-center gap-2">
-                                        <AlertCircle size={14} className="shrink-0 text-rose-400" aria-hidden="true" />
-                                        <span className="text-sm font-medium text-rose-300">
-                                            비선호 중복 확인 ({avoidedRoleWarnings.length}명)
+                                        <AlertCircle size={14} className="shrink-0 text-amber-300" aria-hidden="true" />
+                                        <span className="text-sm font-medium text-amber-200">
+                                            비선호 역할 보완 ({avoidedRoleWarnings.length}명)
                                         </span>
                                     </div>
                                     <button
                                         type="button"
                                         onClick={() => setAvoidedRoleWarnings([])}
-                                        className="min-h-8 shrink-0 rounded-md px-2 text-xs text-rose-200/70 transition-colors hover:bg-rose-500/10 hover:text-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/70"
+                                        className="min-h-8 shrink-0 rounded-md px-2 text-xs text-amber-100/60 transition-colors hover:bg-amber-400/10 hover:text-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
                                     >
                                         모두 닫기
                                     </button>
                                 </div>
                                 <p className="mb-3 text-xs leading-relaxed text-slate-400">
-                                    비선호는 한 역할만 허용됩니다. 아래 항목은 임의로 보정하지 않고 명단에서 제외했습니다.
+                                    비선호는 한 역할만 선택할 수 있습니다. 아래 참가자는 적용하지 않았으며 수동 입력에서 설정을 확인할 수 있습니다.
                                 </p>
                                 <div className="space-y-2">
                                     {avoidedRoleWarnings.map((warning) => {
@@ -517,19 +536,19 @@ const PlayerForm = ({
                                         return (
                                             <div
                                                 key={warning.playerName}
-                                                className="flex items-center justify-between gap-2 rounded-lg border border-rose-500/15 bg-rose-500/[0.06] px-3 py-2"
+                                                className="flex items-center justify-between gap-2 rounded-lg border border-amber-400/15 bg-amber-400/[0.04] px-3 py-2"
                                             >
                                                 <button
                                                     type="button"
                                                     onClick={() => handleUseWarningForManualInput(warning)}
-                                                    className="min-w-0 flex-1 text-left text-xs text-slate-300 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/70"
+                                                    className="min-w-0 flex-1 text-left text-xs text-slate-300 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
                                                 >
-                                                    <strong className="font-medium text-rose-200">{displayName}</strong>
+                                                    <strong className="font-medium text-amber-100">{displayName}</strong>
                                                     <span className="block break-all font-mono text-[11px] text-slate-500">
                                                         {warning.playerName}
                                                     </span>
-                                                    <span className="mt-1 block text-rose-300/80">
-                                                        비선호 {warning.avoidedRoleCount}개 감지 · 자동 추가 제외 · 눌러서 수동 입력
+                                                    <span className="mt-1 block text-amber-200/80">
+                                                        비선호 {warning.avoidedRoleCount}개 감지 · 수동 입력으로 보완 →
                                                     </span>
                                                 </button>
                                                 <button
@@ -537,7 +556,7 @@ const PlayerForm = ({
                                                     onClick={() => setAvoidedRoleWarnings(previous => (
                                                         previous.filter(item => item.playerName !== warning.playerName)
                                                     ))}
-                                                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-rose-500/10 hover:text-rose-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/70"
+                                                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-amber-400/10 hover:text-amber-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
                                                     aria-label={`${displayName} 비선호 중복 안내 닫기`}
                                                 >
                                                     <X size={14} aria-hidden="true" />
@@ -551,24 +570,28 @@ const PlayerForm = ({
 
                         {/* Failed Parses Section */}
                         {failedParses.length > 0 && (
-                            <div className="mt-5 rounded-xl border border-rose-500/30 bg-rose-500/[0.08] p-4 animate-fade-in" role="alert">
+                            <div
+                                className="mt-5 rounded-xl border border-amber-400/30 bg-amber-400/[0.08] p-4 animate-fade-in"
+                                role="status"
+                                aria-live="polite"
+                            >
                                 <div className="mb-3 flex items-center justify-between gap-3">
                                     <div className="flex min-w-0 items-center gap-2">
-                                        <AlertCircle size={14} className="shrink-0 text-rose-400" aria-hidden="true" />
-                                        <span className="text-sm font-medium text-rose-300">
-                                            읽지 못한 항목 ({failedParses.length}명)
+                                        <AlertCircle size={14} className="shrink-0 text-amber-300" aria-hidden="true" />
+                                        <span className="text-sm font-medium text-amber-200">
+                                            등급 정보 보완 ({failedParses.length}명)
                                         </span>
                                     </div>
                                     <button
                                         type="button"
                                         onClick={() => setFailedParses([])}
-                                        className="min-h-8 shrink-0 rounded-md px-2 text-xs text-rose-200/70 transition-colors hover:bg-rose-500/10 hover:text-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/70"
+                                        className="min-h-8 shrink-0 rounded-md px-2 text-xs text-amber-100/60 transition-colors hover:bg-amber-400/10 hover:text-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
                                     >
                                         모두 닫기
                                     </button>
                                 </div>
                                 <p className="mb-3 text-xs text-slate-400">
-                                    배틀태그가 확인되는 항목은 누르면 수동 입력으로 옮겨집니다.
+                                    가져오기는 계속 진행할 수 있습니다. 배틀태그가 있는 참가자는 수동 입력으로 옮겨 보완해 주세요.
                                 </p>
                                 <div className="space-y-2">
                                     {failedParses.map((name) => {
@@ -576,25 +599,31 @@ const PlayerForm = ({
                                         return (
                                             <div
                                                 key={name}
-                                                className="group flex items-center justify-between gap-2 rounded-lg border border-rose-500/15 bg-surface/50 px-3 py-2"
+                                                className="group flex items-center justify-between gap-2 rounded-lg border border-amber-400/15 bg-surface/50 px-3 py-2"
                                             >
                                                 {battleTag ? (
                                                     <button
                                                         type="button"
                                                         onClick={() => handleUseForManualInput(name, battleTag)}
-                                                        className="min-h-8 min-w-0 flex-1 break-words text-left text-sm leading-relaxed text-slate-300 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/70"
+                                                        className="min-h-8 min-w-0 flex-1 break-words text-left text-sm leading-relaxed text-slate-300 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
                                                     >
-                                                        {name}
+                                                        <span className="block">{name}</span>
+                                                        <span className="mt-1 block text-xs text-amber-200/80">
+                                                            수동 입력으로 보완 →
+                                                        </span>
                                                     </button>
                                                 ) : (
                                                     <span className="min-w-0 flex-1 break-words text-sm leading-relaxed text-slate-300">
-                                                        {name}
+                                                        <span className="block">{name}</span>
+                                                        <span className="mt-1 block text-xs text-slate-500">
+                                                            원문에서 배틀태그와 등급 형식을 확인해 주세요.
+                                                        </span>
                                                     </span>
                                                 )}
                                                 <button
                                                     type="button"
                                                     onClick={() => handleRemoveFailed(name)}
-                                                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-rose-500/10 hover:text-rose-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/70"
+                                                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-amber-400/10 hover:text-amber-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
                                                     aria-label={`${name} 실패 항목 삭제`}
                                                 >
                                                     <X size={14} aria-hidden="true" />
