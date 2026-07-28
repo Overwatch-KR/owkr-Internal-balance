@@ -119,9 +119,9 @@ const PlayerList = ({
                                 ? 'text-cyan-300 hover:bg-cyan-500/10'
                                 : 'text-slate-600 hover:bg-cyan-500/10 hover:text-cyan-300'
                         }`}
-                        aria-label={`${player.discordName ?? player.name} 메모`}
+                        aria-label={`${player.discordName ?? player.name} 개인 운영 메모`}
                         aria-expanded={notePlayerId === player.id}
-                        title="운영 메모"
+                        title="개인 운영 메모"
                     >
                         <NotebookPen size={14} aria-hidden="true" />
                     </button>

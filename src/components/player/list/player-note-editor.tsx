@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react';
-import { AlertCircle, Loader2, LockKeyhole, RefreshCcw, Save, Users } from 'lucide-react';
+import { AlertCircle, Loader2, LockKeyhole, RefreshCcw, Save } from 'lucide-react';
 import {
-    fetchPlayerNotes,
+    fetchPlayerNote,
     savePlayerNote,
-    type NoteVisibility,
-    type PlayerNote,
 } from '../../../utils/player-note';
 import { getErrorMessage } from '../../../utils/api';
 
@@ -13,13 +11,58 @@ interface PlayerNoteEditorProps {
     csrfToken: string;
 }
 
+interface PlayerNoteFormProps {
+    draft: string;
+    isDisabled: boolean;
+    isSaving: boolean;
+    message: string;
+    onChange: (value: string) => void;
+    onSave: () => void;
+}
+
 /**
- * @description BattleTag에 연결된 운영자 개인 메모와 관리자 공유 메모를 조회·저장한다.
+ * @description 개인 운영 메모 입력과 현재 계정 전용 안내를 표시한다.
+ */
+export const PlayerNoteForm = ({
+    draft,
+    isDisabled,
+    isSaving,
+    message,
+    onChange,
+    onSave,
+}: PlayerNoteFormProps) => (
+    <div className="mt-2 rounded-lg border border-slate-700/60 bg-slate-950/45 p-3">
+        <div className="mb-2 flex items-center gap-2 rounded-lg bg-cyan-500/10 px-2.5 py-2 text-[11px] text-cyan-200">
+            <LockKeyhole size={12} className="shrink-0" aria-hidden="true" />
+            <span className="font-medium">나만 보기</span>
+            <span className="text-slate-500">현재 로그인한 계정에만 표시됩니다.</span>
+        </div>
+        <textarea
+            value={draft}
+            onChange={(event) => onChange(event.target.value)}
+            maxLength={1000}
+            className="input-base h-24 resize-none text-xs leading-relaxed"
+            placeholder="개인적으로 참고할 운영 메모를 입력하세요."
+        />
+        <div className="mt-2 flex items-center justify-between gap-2">
+            <p className="min-w-0 truncate text-[11px] text-slate-500" role="status">{message}</p>
+            <button
+                type="button"
+                onClick={onSave}
+                disabled={isDisabled || isSaving}
+                className="inline-flex min-h-8 shrink-0 items-center gap-1 rounded-md bg-cyan-500/15 px-2.5 text-xs font-medium text-cyan-200 transition-colors hover:bg-cyan-500/25 disabled:opacity-40"
+            >
+                {isSaving ? <Loader2 size={12} className="animate-spin" aria-hidden="true" /> : <Save size={12} aria-hidden="true" />}
+                저장
+            </button>
+        </div>
+    </div>
+);
+
+/**
+ * @description BattleTag에 연결된 로그인 운영자 본인의 개인 메모를 조회·저장한다.
  */
 export const PlayerNoteEditor = ({ battleTag, csrfToken }: PlayerNoteEditorProps) => {
-    const [visibility, setVisibility] = useState<NoteVisibility>('PRIVATE');
-    const [privateNote, setPrivateNote] = useState<PlayerNote | null>(null);
-    const [sharedNote, setSharedNote] = useState<PlayerNote | null>(null);
     const [draft, setDraft] = useState('');
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
@@ -28,17 +71,15 @@ export const PlayerNoteEditor = ({ battleTag, csrfToken }: PlayerNoteEditorProps
 
     useEffect(() => {
         let active = true;
-        void fetchPlayerNotes(battleTag)
-            .then((notes) => {
+        void fetchPlayerNote(battleTag)
+            .then((note) => {
                 if (!active) return;
-                setPrivateNote(notes.privateNote);
-                setSharedNote(notes.sharedNote);
-                setDraft(notes.privateNote?.content ?? '');
+                setDraft(note?.content ?? '');
                 setLoadError(null);
             })
             .catch((error: unknown) => {
                 if (!active) return;
-                setLoadError(getErrorMessage(error, '메모를 불러오지 못했습니다.'));
+                setLoadError(getErrorMessage(error, '개인 운영 메모를 불러오지 못했습니다.'));
             })
             .finally(() => {
                 if (active) setIsLoading(false);
@@ -48,22 +89,14 @@ export const PlayerNoteEditor = ({ battleTag, csrfToken }: PlayerNoteEditorProps
         };
     }, [battleTag]);
 
-    const selectVisibility = (next: NoteVisibility) => {
-        setVisibility(next);
-        setDraft(next === 'PRIVATE' ? privateNote?.content ?? '' : sharedNote?.content ?? '');
-        setMessage('');
-    };
-
     const retryLoad = async () => {
         setIsLoading(true);
         setLoadError(null);
         try {
-            const notes = await fetchPlayerNotes(battleTag);
-            setPrivateNote(notes.privateNote);
-            setSharedNote(notes.sharedNote);
-            setDraft(notes.privateNote?.content ?? '');
+            const note = await fetchPlayerNote(battleTag);
+            setDraft(note?.content ?? '');
         } catch (error) {
-            setLoadError(getErrorMessage(error, '메모를 불러오지 못했습니다.'));
+            setLoadError(getErrorMessage(error, '개인 운영 메모를 불러오지 못했습니다.'));
         } finally {
             setIsLoading(false);
         }
@@ -73,21 +106,12 @@ export const PlayerNoteEditor = ({ battleTag, csrfToken }: PlayerNoteEditorProps
         setIsSaving(true);
         setMessage('');
         try {
-            await savePlayerNote(battleTag, draft, visibility, csrfToken);
-            const updatedNote = draft.trim()
-                ? {
-                    battleTag,
-                    content: draft.trim(),
-                    visibility,
-                    authorName: '',
-                    updatedAt: Date.now(),
-                } satisfies PlayerNote
-                : null;
-            if (visibility === 'PRIVATE') setPrivateNote(updatedNote);
-            else setSharedNote(updatedNote);
-            setMessage(draft.trim() ? '메모를 저장했습니다.' : '메모를 삭제했습니다.');
+            await savePlayerNote(battleTag, draft, csrfToken);
+            setMessage(draft.trim()
+                ? '개인 운영 메모를 저장했습니다.'
+                : '개인 운영 메모를 삭제했습니다.');
         } catch (error) {
-            setMessage(getErrorMessage(error, '메모를 저장하지 못했습니다.'));
+            setMessage(getErrorMessage(error, '개인 운영 메모를 저장하지 못했습니다.'));
         } finally {
             setIsSaving(false);
         }
@@ -97,7 +121,7 @@ export const PlayerNoteEditor = ({ battleTag, csrfToken }: PlayerNoteEditorProps
         return (
             <div className="mt-2 flex items-center gap-2 rounded-lg bg-slate-950/40 px-3 py-3 text-xs text-slate-500">
                 <Loader2 size={13} className="animate-spin" aria-hidden="true" />
-                메모를 불러오고 있습니다
+                개인 운영 메모를 불러오고 있습니다
             </div>
         );
     }
@@ -122,51 +146,14 @@ export const PlayerNoteEditor = ({ battleTag, csrfToken }: PlayerNoteEditorProps
     }
 
     return (
-        <div className="mt-2 rounded-lg border border-slate-700/60 bg-slate-950/45 p-3">
-            <div className="mb-2 grid grid-cols-2 gap-1 rounded-lg bg-surface p-1">
-                <button
-                    type="button"
-                    onClick={() => selectVisibility('PRIVATE')}
-                    className={`flex min-h-8 items-center justify-center gap-1 rounded-md px-2 text-xs ${
-                        visibility === 'PRIVATE' ? 'bg-cyan-500/15 text-cyan-200' : 'text-slate-500 hover:text-slate-300'
-                    }`}
-                >
-                    <LockKeyhole size={12} aria-hidden="true" />
-                    나만 보기
-                </button>
-                <button
-                    type="button"
-                    onClick={() => selectVisibility('ADMINS')}
-                    className={`flex min-h-8 items-center justify-center gap-1 rounded-md px-2 text-xs ${
-                        visibility === 'ADMINS' ? 'bg-violet-500/15 text-violet-200' : 'text-slate-500 hover:text-slate-300'
-                    }`}
-                >
-                    <Users size={12} aria-hidden="true" />
-                    관리자 공유
-                </button>
-            </div>
-            <textarea
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                maxLength={1000}
-                className="input-base h-24 resize-none text-xs leading-relaxed"
-                placeholder={visibility === 'PRIVATE'
-                    ? '이 메모는 내 계정에서만 보입니다.'
-                    : '등록된 관리자에게 공유할 특이사항을 적으세요.'}
-            />
-            <div className="mt-2 flex items-center justify-between gap-2">
-                <p className="min-w-0 truncate text-[11px] text-slate-500" role="status">{message}</p>
-                <button
-                    type="button"
-                    onClick={() => void save()}
-                    disabled={isSaving || !csrfToken}
-                    className="inline-flex min-h-8 shrink-0 items-center gap-1 rounded-md bg-cyan-500/15 px-2.5 text-xs font-medium text-cyan-200 transition-colors hover:bg-cyan-500/25 disabled:opacity-40"
-                >
-                    {isSaving ? <Loader2 size={12} className="animate-spin" aria-hidden="true" /> : <Save size={12} aria-hidden="true" />}
-                    저장
-                </button>
-            </div>
-        </div>
+        <PlayerNoteForm
+            draft={draft}
+            isDisabled={!csrfToken}
+            isSaving={isSaving}
+            message={message}
+            onChange={setDraft}
+            onSave={() => void save()}
+        />
     );
 };
 
