@@ -6,7 +6,7 @@ const BACKGROUND_IMAGES = [
 ] as const;
 
 /**
- * @description 과거 OWKR Match에서 사용한 Discord 관리자 로그인 화면을 제공한다.
+ * @description OWKR Balance의 Discord 관리자 로그인 화면을 제공한다.
  */
 const LoginScreen = ({ serviceError, onRetry }: LoginScreenProps) => {
     const backgroundImage = BACKGROUND_IMAGES[window.location.hostname.length % BACKGROUND_IMAGES.length];

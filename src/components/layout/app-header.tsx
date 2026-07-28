@@ -33,7 +33,7 @@ export function AppHeader({
                     animate={{ opacity: 1, x: 0 }}
                     className="bg-gradient-to-r from-blue-400 to-cyan-300 bg-clip-text text-xl font-bold tracking-tight text-transparent"
                 >
-                    OWKR Match
+                    OWKR Balance
                 </motion.h1>
 
                 <nav className="flex items-center gap-1" aria-label="주요 메뉴">
