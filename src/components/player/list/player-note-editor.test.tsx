@@ -17,11 +17,12 @@ describe('PlayerNoteForm', () => {
 
         expect(markup).toContain('나만 보기');
         expect(markup).toContain('현재 로그인한 계정에만 표시됩니다.');
-        expect(markup).toContain('개인적으로 참고할 운영 메모를 입력하세요.');
+        expect(markup).toContain('개인적으로 참고할 운영 메모를 입력하세요…');
+        expect(markup).toContain('개인 메모 저장</button>');
         expect(markup).not.toContain('관리자 공유');
     });
 
-    it('시트 저장에 통합된 경우 별도 저장 버튼을 표시하지 않는다', () => {
+    it('읽기 전용 입력 구성에서는 저장 버튼을 표시하지 않는다', () => {
         const markup = renderToStaticMarkup(
             <PlayerNoteForm
                 draft="개인 참고"
@@ -33,7 +34,7 @@ describe('PlayerNoteForm', () => {
         );
 
         expect(markup).toContain('개인 참고');
-        expect(markup).not.toContain('저장</button>');
+        expect(markup).not.toContain('개인 메모 저장</button>');
     });
 });
 
@@ -45,7 +46,7 @@ describe('PlayerNoteViewer', () => {
 
         expect(markup).toContain('관리자 개인 참고');
         expect(markup).not.toContain('<textarea');
-        expect(markup).not.toContain('저장</button>');
+        expect(markup).not.toContain('개인 메모 저장</button>');
         expect(markup).not.toContain('rounded-lg');
     });
 

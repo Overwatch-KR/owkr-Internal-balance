@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, getErrorMessage } from '../utils/api';
-import { fetchUserSheet, type UserSheetEntry } from '../utils/user-sheet';
+import {
+    fetchUserSheet,
+    type UserSheetEntry,
+    type UserSheetSnapshot,
+} from '../utils/user-sheet';
 
 const USER_SHEET_SESSION_KEY = 'owkr_user_sheet_modal';
 const USER_SHEET_REFRESH_INTERVAL_MS = 60_000;
@@ -30,6 +34,7 @@ const readStoredModalState = (): StoredUserSheetModalState => {
 export const useUserSheet = () => {
     const [storedModalState] = useState(readStoredModalState);
     const [entries, setEntries] = useState<UserSheetEntry[]>([]);
+    const [sheetVersion, setSheetVersion] = useState(0);
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isOpen, setIsOpen] = useState(storedModalState.isOpen);
@@ -42,9 +47,10 @@ export const useUserSheet = () => {
         const requestId = ++requestIdRef.current;
         if (showLoading) setIsLoading(true);
         try {
-            const nextEntries = await fetchUserSheet();
+            const snapshot = await fetchUserSheet();
             if (requestId !== requestIdRef.current) return;
-            setEntries(nextEntries);
+            setEntries(snapshot.entries);
+            setSheetVersion(snapshot.sheetVersion);
             setError(null);
         } catch (loadError) {
             if (requestId !== requestIdRef.current) return;
@@ -105,8 +111,9 @@ export const useUserSheet = () => {
         setSelectedBattleTag(undefined);
     }, []);
 
-    const updateEntries = useCallback((nextEntries: UserSheetEntry[]) => {
-        setEntries(nextEntries);
+    const updateSnapshot = useCallback((snapshot: UserSheetSnapshot) => {
+        setEntries(snapshot.entries);
+        setSheetVersion(snapshot.sheetVersion);
         setError(null);
     }, []);
 
@@ -120,6 +127,7 @@ export const useUserSheet = () => {
         revalidate,
         retry,
         selectedBattleTag,
-        updateEntries,
+        sheetVersion,
+        updateSnapshot,
     };
 };

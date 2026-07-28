@@ -14,6 +14,8 @@ interface StoredMatchState {
     alternatives: MatchResultData[];
 }
 
+const MATCH_SESSION_EXPIRY_MS = 30 * 60 * 1000;
+
 const getStorageKeys = (userId: string) => ({
     PLAYERS: `owkr_players:${userId}`,
     RESULT: `owkr_result:${userId}`,
@@ -26,15 +28,23 @@ const getStorageKeys = (userId: string) => ({
 export const useMatchSession = (userId: string) => {
     const storageKeys = getStorageKeys(userId);
     const [players, setPlayers] = useState<Player[]>(() => {
-        const savedPlayers = (getWithExpiry<Player[]>(storageKeys.PLAYERS) || [])
+        const savedPlayers = (
+            getWithExpiry<Player[]>(storageKeys.PLAYERS, MATCH_SESSION_EXPIRY_MS) || []
+        )
             .map(normalizePlayerRolePreferences);
         return reconcilePlayers([], savedPlayers, 'replace').players;
     });
     const [participantMentions, setParticipantMentions] = useState(() => (
-        getWithExpiry<string>(storageKeys.PARTICIPANT_MENTIONS) || ''
+        getWithExpiry<string>(
+            storageKeys.PARTICIPANT_MENTIONS,
+            MATCH_SESSION_EXPIRY_MS,
+        ) || ''
     ));
     const [initialMatchState] = useState<StoredMatchState | null>(() => {
-        const savedState = getWithExpiry<MatchResultData | StoredMatchState>(storageKeys.RESULT);
+        const savedState = getWithExpiry<MatchResultData | StoredMatchState>(
+            storageKeys.RESULT,
+            MATCH_SESSION_EXPIRY_MS,
+        );
         if (!savedState) return null;
         const savedResult = 'result' in savedState ? savedState.result : savedState;
         const savedAlternatives = 'result' in savedState ? savedState.alternatives : [];
@@ -76,13 +86,20 @@ export const useMatchSession = (userId: string) => {
     }, [balanceTeams, initialMatchState]);
 
     useEffect(() => {
-        if (players.length > 0) setWithExpiry(storageKeys.PLAYERS, players);
-        else removeItem(storageKeys.PLAYERS);
+        if (players.length > 0) {
+            setWithExpiry(storageKeys.PLAYERS, players, MATCH_SESSION_EXPIRY_MS);
+        } else {
+            removeItem(storageKeys.PLAYERS);
+        }
     }, [players, storageKeys.PLAYERS]);
 
     useEffect(() => {
         if (participantMentions.trim()) {
-            setWithExpiry(storageKeys.PARTICIPANT_MENTIONS, participantMentions);
+            setWithExpiry(
+                storageKeys.PARTICIPANT_MENTIONS,
+                participantMentions,
+                MATCH_SESSION_EXPIRY_MS,
+            );
         } else {
             removeItem(storageKeys.PARTICIPANT_MENTIONS);
         }
@@ -94,6 +111,7 @@ export const useMatchSession = (userId: string) => {
             setWithExpiry<StoredMatchState>(
                 storageKeys.RESULT,
                 { result, alternatives },
+                MATCH_SESSION_EXPIRY_MS,
             );
         } else {
             removeItem(storageKeys.RESULT);
