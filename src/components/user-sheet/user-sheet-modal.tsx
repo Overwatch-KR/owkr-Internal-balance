@@ -29,6 +29,7 @@ interface UserSheetModalProps {
     entries: UserSheetEntry[];
     error: string | null;
     initialBattleTag?: string;
+    initialEntryId?: string;
     isLoading: boolean;
     noteCacheScope: string;
     participantBattleTags: Set<string>;
@@ -48,6 +49,7 @@ export function UserSheetModal({
     entries,
     error,
     initialBattleTag,
+    initialEntryId,
     isLoading,
     noteCacheScope,
     participantBattleTags,
@@ -58,12 +60,11 @@ export function UserSheetModal({
     onSnapshotChange,
     sheetVersion,
 }: UserSheetModalProps) {
-    const initialEntry = initialBattleTag
-        ? entries.find(entry => (
+    const initialEntry = entries.find(entry => entry.id === initialEntryId)
+        ?? (initialBattleTag ? entries.find(entry => (
             normalizeUserSheetBattleTag(entry.battleTag)
             === normalizeUserSheetBattleTag(initialBattleTag)
-        ))
-        : entries[0];
+        )) : entries[0]);
     const [mode, setMode] = useState<UserSheetMode>('BROWSE');
     const [selectedId, setSelectedId] = useState<string | null>(initialEntry?.id ?? null);
     const [editorTarget, setEditorTarget] = useState<'ALL' | 'NEW'>('ALL');
@@ -71,6 +72,7 @@ export function UserSheetModal({
     const [isTourOpen, setIsTourOpen] = useState(false);
     const [query, setQuery] = useState('');
     const selectedEntry = entries.find(entry => entry.id === selectedId)
+        ?? entries.find(entry => entry.id === initialEntryId)
         ?? (initialBattleTag
             ? entries.find(entry => (
                 normalizeUserSheetBattleTag(entry.battleTag)

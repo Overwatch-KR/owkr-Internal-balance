@@ -4,6 +4,7 @@ import { ApiError, requestJson } from './api';
 
 export interface UserSheetEntry {
     id: string;
+    discordUserId?: string;
     discordName: string;
     battleTag: string;
     tank: string;
@@ -32,12 +33,17 @@ interface UserSheetConflictResponse {
 
 export type UserSheetDraftEntry = Pick<
     UserSheetEntry,
-    'id' | 'discordName' | 'battleTag' | 'tank' | 'dps' | 'support' | 'note'
+    'id' | 'discordUserId' | 'discordName' | 'battleTag' | 'tank' | 'dps' | 'support' | 'note'
 >;
 
-export type UserSheetValidationError = 'INVALID_BATTLE_TAG' | 'DUPLICATE_BATTLE_TAG';
+export type UserSheetValidationError =
+    | 'INVALID_BATTLE_TAG'
+    | 'DUPLICATE_BATTLE_TAG'
+    | 'INVALID_DISCORD_USER_ID'
+    | 'DUPLICATE_DISCORD_USER_ID';
 
 const USER_SHEET_DRAFT_FIELDS: ReadonlyArray<keyof UserSheetDraftEntry> = [
+    'discordUserId',
     'discordName',
     'battleTag',
     'tank',
@@ -46,8 +52,12 @@ const USER_SHEET_DRAFT_FIELDS: ReadonlyArray<keyof UserSheetDraftEntry> = [
     'note',
 ];
 
+const normalizeDiscordUserId = (value: string | undefined): string => (
+    value?.replace(/\D/g, '').trim() ?? ''
+);
+
 export const isActiveUserSheetEntry = (entry: UserSheetDraftEntry): boolean => (
-    USER_SHEET_DRAFT_FIELDS.some(field => entry[field].trim())
+    USER_SHEET_DRAFT_FIELDS.some(field => (entry[field] ?? '').trim())
 );
 
 /**
@@ -58,18 +68,41 @@ export const validateUserSheetEntries = (rows: UserSheetDraftEntry[]): {
     errors: Map<string, UserSheetValidationError>;
 } => {
     const activeRows = rows.filter(isActiveUserSheetEntry);
-    const counts = new Map<string, number>();
+    const rowsByBattleTag = new Map<string, UserSheetDraftEntry[]>();
+    const discordIdCounts = new Map<string, number>();
     for (const row of activeRows) {
+        const discordUserId = normalizeDiscordUserId(row.discordUserId);
+        if (discordUserId) {
+            discordIdCounts.set(
+                discordUserId,
+                (discordIdCounts.get(discordUserId) ?? 0) + 1,
+            );
+        }
         const key = normalizeUserSheetBattleTag(row.battleTag);
-        if (key) counts.set(key, (counts.get(key) ?? 0) + 1);
+        if (!key) continue;
+        const matches = rowsByBattleTag.get(key) ?? [];
+        matches.push(row);
+        rowsByBattleTag.set(key, matches);
     }
 
     const errors = new Map<string, UserSheetValidationError>();
     for (const row of activeRows) {
-        if (!row.battleTag.includes('#')) {
+        const discordUserId = normalizeDiscordUserId(row.discordUserId);
+        if (discordUserId && !/^\d{17,20}$/.test(discordUserId)) {
+            errors.set(row.id, 'INVALID_DISCORD_USER_ID');
+        } else if (discordUserId && (discordIdCounts.get(discordUserId) ?? 0) > 1) {
+            errors.set(row.id, 'DUPLICATE_DISCORD_USER_ID');
+        } else if (!row.battleTag.includes('#')) {
             errors.set(row.id, 'INVALID_BATTLE_TAG');
-        } else if ((counts.get(normalizeUserSheetBattleTag(row.battleTag)) ?? 0) > 1) {
-            errors.set(row.id, 'DUPLICATE_BATTLE_TAG');
+        } else {
+            const matches = rowsByBattleTag.get(
+                normalizeUserSheetBattleTag(row.battleTag),
+            ) ?? [];
+            if (matches.length <= 1) continue;
+            const discordIds = matches.map(match => normalizeDiscordUserId(match.discordUserId));
+            const hasDistinctDiscordIds = discordIds.every(Boolean)
+                && new Set(discordIds).size === matches.length;
+            if (!hasDistinctDiscordIds) errors.set(row.id, 'DUPLICATE_BATTLE_TAG');
         }
     }
 
@@ -181,6 +214,8 @@ export const addMissingPlayersToUserSheet = async (
     csrfToken: string,
 ): Promise<AddMissingUserSheetPlayersResult> => {
     const entries = players.map(player => ({
+        entryId: player.userSheetEntryId,
+        discordUserId: normalizeDiscordUserId(player.discordUserId) || undefined,
         discordName: player.discordName?.trim() ?? '',
         battleTag: player.name.trim(),
         tank: cleanUserSheetRank(formatRank(player.tank)),
@@ -200,18 +235,45 @@ export const addMissingPlayersToUserSheet = async (
 };
 
 /**
- * @description Google Sheets에서 복사한 6개 열을 유저 시트 행으로 변환한다.
+ * @description Google Sheets의 기존 6열 또는 Discord ID가 포함된 7열을 유저 시트 행으로 변환한다.
  */
 export const parseUserSheetRows = (text: string): UserSheetDraftEntry[] => {
     const lines = text.replace(/\r/g, '').split('\n').filter(line => line.trim());
     if (lines.length === 0) return [];
-    const headerAliases = ['디스코드', '배틀태그', '탱커', '딜러', '힐러', '특이사항'];
+    const headerAliases = ['디스코드', 'discord', '배틀태그', '탱커', '딜러', '힐러', '특이사항'];
     const firstCells = lines[0].split('\t').map(cell => cell.trim().toLowerCase());
     const hasHeader = firstCells.some(cell => headerAliases.some(alias => cell.includes(alias)));
+    const hasDiscordIdColumn = firstCells.some(cell => (
+        cell.includes('discord id')
+        || cell.includes('디스코드 id')
+        || cell.includes('고유 id')
+    )) || (
+        !hasHeader
+        && (
+            firstCells.length >= 7
+            || /^\d{17,20}$/.test(firstCells[1] ?? '')
+        )
+    );
     return lines.slice(hasHeader ? 1 : 0).map((line, index) => {
-        const [discordName = '', battleTag = '', tank = '', dps = '', support = '', note = ''] = line.split('\t');
+        const cells = line.split('\t');
+        const [
+            discordName = '',
+            secondCell = '',
+            thirdCell = '',
+            fourthCell = '',
+            fifthCell = '',
+            sixthCell = '',
+            seventhCell = '',
+        ] = cells;
+        const discordUserId = hasDiscordIdColumn ? secondCell : '';
+        const battleTag = hasDiscordIdColumn ? thirdCell : secondCell;
+        const tank = hasDiscordIdColumn ? fourthCell : thirdCell;
+        const dps = hasDiscordIdColumn ? fifthCell : fourthCell;
+        const support = hasDiscordIdColumn ? sixthCell : fifthCell;
+        const note = hasDiscordIdColumn ? seventhCell : sixthCell;
         return {
             id: `${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`,
+            discordUserId: normalizeDiscordUserId(discordUserId) || undefined,
             discordName: discordName.trim(),
             battleTag: battleTag.trim(),
             tank: cleanUserSheetRank(tank),
@@ -224,9 +286,39 @@ export const parseUserSheetRows = (text: string): UserSheetDraftEntry[] => {
 
 export const normalizeUserSheetBattleTag = (value: string): string => value.trim().toLowerCase();
 
+/**
+ * @description 참가자의 가장 안정적인 식별자로 유저 시트 조회 키를 만든다.
+ */
+export const getPlayerUserSheetLookupKey = (player: Player): string => {
+    if (player.userSheetEntryId?.trim()) return `entry:${player.userSheetEntryId.trim()}`;
+    if (player.discordUserId?.trim()) return `discord:${player.discordUserId.trim()}`;
+    return normalizeUserSheetBattleTag(player.name);
+};
+
+/**
+ * @description 시트 UUID·Discord ID를 우선하고 유일한 배틀태그만 보조 키로 등록한다.
+ */
+export const createUserSheetPlayerLookup = (
+    entries: UserSheetEntry[],
+): Map<string, UserSheetEntry> => {
+    const lookup = new Map<string, UserSheetEntry>();
+    const battleTagCounts = new Map<string, number>();
+    entries.forEach(entry => {
+        const battleTag = normalizeUserSheetBattleTag(entry.battleTag);
+        battleTagCounts.set(battleTag, (battleTagCounts.get(battleTag) ?? 0) + 1);
+    });
+    entries.forEach(entry => {
+        lookup.set(`entry:${entry.id}`, entry);
+        if (entry.discordUserId) lookup.set(`discord:${entry.discordUserId}`, entry);
+        const battleTag = normalizeUserSheetBattleTag(entry.battleTag);
+        if (battleTagCounts.get(battleTag) === 1) lookup.set(battleTag, entry);
+    });
+    return lookup;
+};
+
 const USER_SHEET_COMPARISON_FIELDS: ReadonlyArray<
-    keyof Pick<UserSheetDraftEntry, 'discordName' | 'battleTag' | 'tank' | 'dps' | 'support' | 'note'>
-> = ['discordName', 'battleTag', 'tank', 'dps', 'support', 'note'];
+    keyof Pick<UserSheetDraftEntry, 'discordUserId' | 'discordName' | 'battleTag' | 'tank' | 'dps' | 'support' | 'note'>
+> = ['discordUserId', 'discordName', 'battleTag', 'tank', 'dps', 'support', 'note'];
 
 /**
  * @description 저장 전후의 실제 추가·수정·삭제 건수를 계산한다.
@@ -235,26 +327,26 @@ export const getUserSheetChangeSummary = (
     previousEntries: UserSheetDraftEntry[],
     nextEntries: UserSheetDraftEntry[],
 ): UserSheetChangeSummary => {
-    const previousByBattleTag = new Map(
-        previousEntries.map(entry => [normalizeUserSheetBattleTag(entry.battleTag), entry]),
+    const previousById = new Map(
+        previousEntries.map(entry => [entry.id, entry]),
     );
-    const nextByBattleTag = new Map(
-        nextEntries.map(entry => [normalizeUserSheetBattleTag(entry.battleTag), entry]),
+    const nextById = new Map(
+        nextEntries.map(entry => [entry.id, entry]),
     );
     let addedCount = 0;
     let removedCount = 0;
     let updatedCount = 0;
 
-    for (const [battleTag, entry] of nextByBattleTag) {
-        const previous = previousByBattleTag.get(battleTag);
+    for (const [id, entry] of nextById) {
+        const previous = previousById.get(id);
         if (!previous) {
             addedCount += 1;
         } else if (USER_SHEET_COMPARISON_FIELDS.some(field => previous[field] !== entry[field])) {
             updatedCount += 1;
         }
     }
-    for (const battleTag of previousByBattleTag.keys()) {
-        if (!nextByBattleTag.has(battleTag)) removedCount += 1;
+    for (const id of previousById.keys()) {
+        if (!nextById.has(id)) removedCount += 1;
     }
 
     return { addedCount, removedCount, updatedCount };
@@ -285,7 +377,8 @@ export interface UserSheetMergeResult {
 }
 
 const isBlankDraftEntry = (entry: UserSheetDraftEntry): boolean => (
-    !entry.discordName.trim()
+    !(entry.discordUserId ?? '').trim()
+    && !entry.discordName.trim()
     && !entry.battleTag.trim()
     && !entry.tank.trim()
     && !entry.dps.trim()
@@ -340,6 +433,7 @@ export const mergeDiscordPlayersIntoUserSheet = (
             id: blankIndex >= 0
                 ? rows[blankIndex].id
                 : `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+            discordUserId: '',
             discordName: player.discordName?.trim() ?? '',
             ...nextValues,
             note: '',

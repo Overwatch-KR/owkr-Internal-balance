@@ -543,6 +543,7 @@ export const parseMultipleLines = (text: string): ParseResult => {
     const failedLineSet = new Set<string>();
     const avoidedRoleWarnings: AvoidedRoleWarning[] = [];
     const seenNames = new Set<string>();
+    const seenPlayerIdentities = new Set<string>();
     let pendingDiscordName: string | undefined;
     const addFailedLine = (line: string) => {
         const normalized = line.trim();
@@ -599,12 +600,17 @@ export const parseMultipleLines = (text: string): ParseResult => {
                     const warning = rawPlayer ? createAvoidedRoleWarning(rawPlayer) : null;
                     const player = rawPlayer ? normalizePlayerRolePreferences(rawPlayer) : null;
                     const normalizedName = player?.name.toLowerCase();
-                    if (warning && normalizedName && !seenNames.has(normalizedName)) {
+                    const parsedIdentity = normalizedName
+                        ? `${playerDiscordName?.trim().toLowerCase() ?? ''}|${normalizedName}`
+                        : '';
+                    if (warning && parsedIdentity && !seenPlayerIdentities.has(parsedIdentity)) {
                         avoidedRoleWarnings.push(warning);
-                        seenNames.add(normalizedName);
-                    } else if (player && normalizedName && !seenNames.has(normalizedName)) {
+                        seenPlayerIdentities.add(parsedIdentity);
+                    } else if (player && parsedIdentity && !seenPlayerIdentities.has(parsedIdentity)) {
                         players.push(player);
-                        seenNames.add(normalizedName);
+                        seenPlayerIdentities.add(parsedIdentity);
+                    } else if (player || warning) {
+                        // 같은 Discord 이름과 배틀태그로 반복 게시된 항목은 한 번만 사용한다.
                     } else if (!seenNames.has(nameOnly.toLowerCase())) {
                         // 파싱 실패 - 닉네임만 추출해서 실패 목록에 추가
                         addFailedLine(nameOnly);
@@ -625,12 +631,17 @@ export const parseMultipleLines = (text: string): ParseResult => {
             const warning = rawPlayer ? createAvoidedRoleWarning(rawPlayer) : null;
             const player = rawPlayer ? normalizePlayerRolePreferences(rawPlayer) : null;
             const normalizedName = player?.name.toLowerCase();
-            if (warning && normalizedName && !seenNames.has(normalizedName)) {
+            const parsedIdentity = normalizedName
+                ? `${playerDiscordName?.trim().toLowerCase() ?? ''}|${normalizedName}`
+                : '';
+            if (warning && parsedIdentity && !seenPlayerIdentities.has(parsedIdentity)) {
                 avoidedRoleWarnings.push(warning);
-                seenNames.add(normalizedName);
-            } else if (player && normalizedName && !seenNames.has(normalizedName)) {
+                seenPlayerIdentities.add(parsedIdentity);
+            } else if (player && parsedIdentity && !seenPlayerIdentities.has(parsedIdentity)) {
                 players.push(player);
-                seenNames.add(normalizedName);
+                seenPlayerIdentities.add(parsedIdentity);
+            } else if (player || warning) {
+                // 같은 Discord 이름과 배틀태그로 반복 게시된 항목은 한 번만 사용한다.
             } else {
                 // 파싱 실패 - 닉네임 추출 시도
                 const nameMatch = line.match(/([^\s]+#\d{4,})/);
