@@ -36,7 +36,7 @@ const COLUMNS: ReadonlyArray<{
     width: string;
 }> = [
     { field: 'discordName', label: '디스코드 이름', placeholder: '상민', width: 'min-w-40' },
-    { field: 'discordUserId', label: 'Discord ID', placeholder: '123456789012345678', width: 'min-w-52' },
+    { field: 'discordUserId', label: 'Discord ID *', placeholder: '필수 · 123456789012345678', width: 'min-w-52' },
     { field: 'battleTag', label: '배틀태그', placeholder: 'Player#1234', width: 'min-w-56' },
     { field: 'tank', label: '탱커', placeholder: '다3', width: 'min-w-28' },
     { field: 'dps', label: '딜러', placeholder: '플1', width: 'min-w-28' },
@@ -45,6 +45,7 @@ const COLUMNS: ReadonlyArray<{
 ];
 
 const ERROR_LABELS: Record<UserSheetValidationError, string> = {
+    REQUIRED_DISCORD_USER_ID: 'ID 필수',
     INVALID_BATTLE_TAG: '형식 오류',
     DUPLICATE_BATTLE_TAG: '중복',
     INVALID_DISCORD_USER_ID: 'ID 형식 오류',
@@ -52,6 +53,7 @@ const ERROR_LABELS: Record<UserSheetValidationError, string> = {
 };
 
 const ERROR_DETAILS: Record<UserSheetValidationError, string> = {
+    REQUIRED_DISCORD_USER_ID: '모든 유저의 Discord ID를 입력해 주세요.',
     INVALID_BATTLE_TAG: '배틀태그에 #과 숫자 태그를 포함해 주세요. 예: Player#1234',
     DUPLICATE_BATTLE_TAG: '같은 배틀태그를 구분하려면 각 유저의 Discord ID가 필요합니다.',
     INVALID_DISCORD_USER_ID: 'Discord ID는 17~20자리 숫자로 입력해 주세요.',
@@ -92,7 +94,8 @@ export function UserSheetEditorTable({
                 <tbody>
                     {rows.map((row, rowIndex) => {
                         const error = errors.get(row.id);
-                        const errorField = error === 'INVALID_DISCORD_USER_ID'
+                        const errorField = error === 'REQUIRED_DISCORD_USER_ID'
+                            || error === 'INVALID_DISCORD_USER_ID'
                             || error === 'DUPLICATE_DISCORD_USER_ID'
                             ? 'discordUserId'
                             : 'battleTag';
@@ -129,6 +132,7 @@ export function UserSheetEditorTable({
                                                     : rowIndex === 0
                                             )}
                                             autoComplete="off"
+                                            required={column.field === 'discordUserId'}
                                             spellCheck={false}
                                             placeholder={rowIndex === 0 ? column.placeholder : ''}
                                             aria-label={`${rowIndex + 1}행 ${column.label}`}

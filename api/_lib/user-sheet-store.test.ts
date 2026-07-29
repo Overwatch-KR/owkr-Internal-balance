@@ -226,6 +226,91 @@ describe('user sheet atomic store', () => {
         expect(redis.eval).toHaveBeenCalledTimes(2);
     });
 
+    it('이름과 배틀태그가 모두 바뀌어도 같은 Discord ID면 기존 행 하나만 갱신한다', async () => {
+        const redis = createRedis();
+        const existing: StoredUserSheetEntry = {
+            ...storedEntry,
+            discordUserId: '111111111111111101',
+            discordName: '청록별',
+            battleTag: 'NeonFox#12847',
+            tank: '다3',
+            dps: '플2',
+            support: '골1',
+        };
+        vi.mocked(redis.eval)
+            .mockResolvedValueOnce(0)
+            .mockResolvedValueOnce({
+                entries: [existing],
+                sheetVersion: 7,
+            })
+            .mockResolvedValueOnce({ status: 'OK' })
+            .mockResolvedValueOnce(0)
+            .mockResolvedValueOnce({
+                entries: [{
+                    ...existing,
+                    discordName: '청별',
+                    battleTag: 'NeonFx#12847',
+                    tank: '챔1',
+                }],
+                sheetVersion: 8,
+            });
+
+        const result = await syncRosterUserSheetEntries(
+            redis,
+            [{
+                discordUserId: '111111111111111101',
+                discordName: '청별',
+                battleTag: 'NeonFx#12847',
+                tank: '챔1',
+                dps: '플2',
+                support: '골1',
+                syncTiers: true,
+            }],
+            7,
+            '관리자 B',
+        );
+
+        expect(result).toMatchObject({
+            status: 'OK',
+            addedCount: 0,
+            updatedCount: 1,
+            tierUpdatedCount: 1,
+        });
+        const savedEntries = JSON.parse(
+            String(vi.mocked(redis.eval).mock.calls[2]?.[2]?.[1]),
+        ) as StoredUserSheetEntry[];
+        expect(savedEntries).toHaveLength(1);
+        expect(savedEntries[0]).toMatchObject({
+            id: existing.id,
+            discordUserId: existing.discordUserId,
+            discordName: '청별',
+            battleTag: 'NeonFx#12847',
+            tank: '챔1',
+            dps: '플2',
+            support: '골1',
+        });
+    });
+
+    it('Discord ID가 없는 행은 전체 시트에 저장하지 않는다', async () => {
+        const redis = createRedis();
+        vi.mocked(redis.eval)
+            .mockResolvedValueOnce(0)
+            .mockResolvedValueOnce({
+                entries: [storedEntry],
+                sheetVersion: 4,
+            });
+
+        const result = await replaceUserSheet(
+            redis,
+            [{ ...storedEntry, discordUserId: undefined }],
+            4,
+            '관리자 B',
+        );
+
+        expect(result).toEqual({ status: 'INVALID' });
+        expect(redis.eval).toHaveBeenCalledTimes(2);
+    });
+
     it('서로 다른 Discord ID가 있으면 같은 배틀태그의 신규 유저도 함께 저장한다', async () => {
         const redis = createRedis();
         vi.mocked(redis.eval)

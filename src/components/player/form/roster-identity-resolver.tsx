@@ -69,6 +69,8 @@ const makeDrafts = (
     return {
         ...suggestion,
         discordUserId: selectedEntry?.discordUserId ?? suggestion.player.discordUserId ?? '',
+        requiresDiscordUserId: suggestion.requiresDiscordUserId
+            || !selectedEntry?.discordUserId,
         selectedEntryId: suggestion.selectedEntryId ?? '',
         syncTiers: true,
     };
@@ -262,6 +264,16 @@ export function RosterIdentityResolver({
             selectedEntryId: entryId,
             discordUserId: entry?.discordUserId
                 ?? (entryId ? draft.discordUserId : ''),
+        });
+    };
+
+    const updateDiscordUserId = (draft: ResolutionDraft, value: string) => {
+        const discordUserId = cleanDiscordUserId(value);
+        const idMatchedEntry = entriesByDiscordId.get(discordUserId);
+        updateDraft(draft.player.id, {
+            discordUserId,
+            selectedEntryId: idMatchedEntry?.id
+                ?? (draft.matchKind === 'NEW' ? '' : draft.selectedEntryId),
         });
     };
 
@@ -460,6 +472,9 @@ export function RosterIdentityResolver({
                         {drafts.map((draft, index) => {
                             const error = errors[index];
                             const resolvedEntry = getResolvedEntry(draft);
+                            const idMatchedEntry = entriesByDiscordId.get(
+                                cleanDiscordUserId(draft.discordUserId),
+                            );
                             const changes = getDraftChanges(draft);
                             const candidates = draft.candidateEntryIds
                                 .map(id => entriesById.get(id))
@@ -493,7 +508,9 @@ export function RosterIdentityResolver({
                                                         ? 'bg-amber-500/10 text-amber-300'
                                                         : 'bg-cyan-500/10 text-cyan-300'
                                                 }`}>
-                                                    {MATCH_LABELS[draft.matchKind]}
+                                                    {idMatchedEntry && draft.matchKind !== 'DISCORD_ID'
+                                                        ? 'Discord ID로 기존 연결'
+                                                        : MATCH_LABELS[draft.matchKind]}
                                                 </span>
                                             </div>
                                             <p className="mt-1 truncate font-mono text-[11px] text-slate-600">
@@ -508,7 +525,7 @@ export function RosterIdentityResolver({
                                                 onChange={event => selectEntry(draft, event.target.value)}
                                                 className="h-10 min-w-0 rounded-lg border border-slate-700 bg-slate-950/50 px-2 text-xs text-slate-200 outline-none focus:border-cyan-400"
                                             >
-                                                <option value="">신규 유저로 생성</option>
+                                                <option value="">새 유저로 생성 · 미등록 ID만 가능</option>
                                                 {candidates.map(entry => (
                                                     <option key={entry.id} value={entry.id}>
                                                         {entry.discordName || '이름 없음'} · {entry.battleTag}
@@ -521,13 +538,12 @@ export function RosterIdentityResolver({
                                             Discord 고유 ID
                                             <input
                                                 value={draft.discordUserId}
-                                                onChange={event => updateDraft(draft.player.id, {
-                                                    discordUserId: cleanDiscordUserId(event.target.value),
-                                                })}
+                                                onChange={event => updateDiscordUserId(
+                                                    draft,
+                                                    event.target.value,
+                                                )}
                                                 inputMode="numeric"
-                                                placeholder={draft.requiresDiscordUserId
-                                                    ? '필수 · 17~20자리 숫자'
-                                                    : '기존 유저는 나중에 등록 가능'}
+                                                placeholder="필수 · 17~20자리 숫자"
                                                 className={`h-10 min-w-0 rounded-lg border bg-slate-950/50 px-3 font-mono text-xs outline-none ${
                                                     error
                                                         ? 'border-rose-400/60 text-rose-100 focus:border-rose-300'
@@ -550,9 +566,11 @@ export function RosterIdentityResolver({
                                                     <CheckCircle2 size={12} className="shrink-0 text-emerald-300" aria-hidden="true" />
                                                     <span className="text-emerald-300">
                                                         {resolvedEntry
-                                                            ? changes.length > 0
-                                                                ? `${changes.length}개 항목 갱신 예정`
-                                                                : '시트 정보 변경 없음'
+                                                            ? idMatchedEntry && draft.matchKind !== 'DISCORD_ID'
+                                                                ? `Discord ID로 ${resolvedEntry.discordName || resolvedEntry.battleTag} 기존 행 재연결 · 새 행을 만들지 않음`
+                                                                : changes.length > 0
+                                                                    ? `${changes.length}개 항목 갱신 예정`
+                                                                    : '시트 정보 변경 없음'
                                                             : '새 유저 시트 행으로 추가'}
                                                     </span>
                                                 </>

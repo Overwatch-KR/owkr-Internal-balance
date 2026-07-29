@@ -320,8 +320,13 @@ describe('validateUserSheetEntries', () => {
         expect(validateUserSheetEntries(duplicateRows).errors.size).toBe(0);
     });
 
-    const draft = (id: string, battleTag: string): UserSheetDraftEntry => ({
+    const draft = (
+        id: string,
+        battleTag: string,
+        discordUserId = '',
+    ): UserSheetDraftEntry => ({
         id,
+        discordUserId,
         discordName: '유저',
         battleTag,
         tank: '',
@@ -330,16 +335,16 @@ describe('validateUserSheetEntries', () => {
         note: '',
     });
 
-    it('배틀태그 형식 오류와 대소문자를 무시한 중복을 구분한다', () => {
+    it('Discord ID 필수와 배틀태그 형식 오류를 구분한다', () => {
         const result = validateUserSheetEntries([
-            draft('invalid', 'Player1234'),
+            draft('invalid', 'Player1234', '33333333333333333'),
             draft('duplicate-a', 'Player#1234'),
             draft('duplicate-b', ' player#1234 '),
         ]);
 
         expect(result.errors.get('invalid')).toBe('INVALID_BATTLE_TAG');
-        expect(result.errors.get('duplicate-a')).toBe('DUPLICATE_BATTLE_TAG');
-        expect(result.errors.get('duplicate-b')).toBe('DUPLICATE_BATTLE_TAG');
+        expect(result.errors.get('duplicate-a')).toBe('REQUIRED_DISCORD_USER_ID');
+        expect(result.errors.get('duplicate-b')).toBe('REQUIRED_DISCORD_USER_ID');
     });
 
     it('완전히 빈 행은 저장 대상과 오류 검사에서 제외한다', () => {

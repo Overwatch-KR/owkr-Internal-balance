@@ -233,12 +233,10 @@ const hasValidIdentityConstraints = (entries: StoredUserSheetEntry[]): boolean =
     const entriesByBattleTag = new Map<string, StoredUserSheetEntry[]>();
     for (const entry of entries) {
         const discordUserId = normalizeDiscordUserId(entry.discordUserId);
-        if (discordUserId) {
-            if (!/^\d{17,20}$/.test(discordUserId) || discordIds.has(discordUserId)) {
-                return false;
-            }
-            discordIds.add(discordUserId);
+        if (!/^\d{17,20}$/.test(discordUserId) || discordIds.has(discordUserId)) {
+            return false;
         }
+        discordIds.add(discordUserId);
         const battleTag = normalizeBattleTag(entry.battleTag);
         const matches = entriesByBattleTag.get(battleTag) ?? [];
         matches.push(entry);
@@ -417,7 +415,7 @@ export const updateUserSheetEntry = async (
     const battleTag = sanitizeText(source.battleTag, 100);
     const discordUserId = normalizeDiscordUserId(source.discordUserId);
     if (!id || !battleTag.includes('#')) return { status: 'INVALID' };
-    if (discordUserId && !/^\d{17,20}$/.test(discordUserId)) {
+    if (!/^\d{17,20}$/.test(discordUserId)) {
         return { status: 'INVALID' };
     }
 
@@ -510,7 +508,7 @@ export const syncRosterUserSheetEntries = async (
         const discordUserId = normalizeDiscordUserId(source.discordUserId);
         const battleTag = sanitizeText(source.battleTag, 100);
         if (!battleTag.includes('#')) return { status: 'INVALID' };
-        if (discordUserId && !/^\d{17,20}$/.test(discordUserId)) {
+        if (!/^\d{17,20}$/.test(discordUserId)) {
             return { status: 'INVALID' };
         }
 
@@ -520,7 +518,6 @@ export const syncRosterUserSheetEntries = async (
             return { status: 'INVALID' };
         }
         const existing = entryMatch ?? discordMatch;
-        if (!existing && !discordUserId) return { status: 'INVALID' };
         if (
             existing?.discordUserId
             && discordUserId

@@ -64,7 +64,20 @@ describe('roster identity suggestions', () => {
 
         expect(suggestion).toMatchObject({
             matchKind: 'DISCORD_NAME',
-            requiresDiscordUserId: false,
+            requiresDiscordUserId: true,
+            selectedEntryId: 'sheet-1',
+        });
+    });
+
+    it('기존 행도 Discord ID가 비어 있으면 식별 완료 전에 입력을 요구한다', () => {
+        const suggestion = suggestRosterIdentity(
+            player(1, 'Same#1234', '같은 이름'),
+            [entry('sheet-1', 'Same#1234', '같은 이름')],
+        );
+
+        expect(suggestion).toMatchObject({
+            matchKind: 'BATTLE_TAG_AND_NAME',
+            requiresDiscordUserId: true,
             selectedEntryId: 'sheet-1',
         });
     });

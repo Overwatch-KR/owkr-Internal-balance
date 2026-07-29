@@ -38,6 +38,7 @@ export type UserSheetDraftEntry = Pick<
 >;
 
 export type UserSheetValidationError =
+    | 'REQUIRED_DISCORD_USER_ID'
     | 'INVALID_BATTLE_TAG'
     | 'DUPLICATE_BATTLE_TAG'
     | 'INVALID_DISCORD_USER_ID'
@@ -177,7 +178,9 @@ export const validateUserSheetEntries = (rows: UserSheetDraftEntry[]): {
     const errors = new Map<string, UserSheetValidationError>();
     for (const row of activeRows) {
         const discordUserId = normalizeDiscordUserId(row.discordUserId);
-        if (discordUserId && !/^\d{17,20}$/.test(discordUserId)) {
+        if (!discordUserId) {
+            errors.set(row.id, 'REQUIRED_DISCORD_USER_ID');
+        } else if (!/^\d{17,20}$/.test(discordUserId)) {
             errors.set(row.id, 'INVALID_DISCORD_USER_ID');
         } else if (discordUserId && (discordIdCounts.get(discordUserId) ?? 0) > 1) {
             errors.set(row.id, 'DUPLICATE_DISCORD_USER_ID');
@@ -264,6 +267,10 @@ export const saveUserSheet = async (
     csrfToken: string,
 ): Promise<UserSheetSnapshot> => {
     if (IS_LOCAL_REVIEW_MODE) {
+        const validation = validateUserSheetEntries(entries);
+        if (validation.errors.size > 0) {
+            throw new ApiError('모든 유저의 Discord ID를 올바르게 입력해 주세요.', 400);
+        }
         const current = readLocalUserSheet();
         const previousById = new Map(current.entries.map(entry => [entry.id, entry]));
         const now = Date.now();
@@ -378,17 +385,28 @@ export const syncRosterPlayersToUserSheet = async (
 
         for (const [playerIndex, player] of players.entries()) {
             const discordUserId = normalizeDiscordUserId(player.discordUserId);
+            if (!/^\d{17,20}$/.test(discordUserId)) {
+                throw new ApiError('모든 참가자의 Discord ID가 필요합니다.', 400);
+            }
             const battleTagKey = normalizeUserSheetBattleTag(player.name);
             const uniqueBattleTagIndexes = entryIndexesByBattleTag.get(battleTagKey) ?? [];
-            const existingIndex = (
+            const entryIdIndex = (
                 player.userSheetEntryId
                     ? entryIndexById.get(player.userSheetEntryId)
                     : undefined
-            ) ?? (
-                discordUserId
-                    ? entryIndexByDiscordId.get(discordUserId)
-                    : undefined
-            ) ?? (
+            );
+            const discordIdIndex = entryIndexByDiscordId.get(discordUserId);
+            if (
+                entryIdIndex !== undefined
+                && discordIdIndex !== undefined
+                && entryIdIndex !== discordIdIndex
+            ) {
+                throw new ApiError(
+                    '선택한 유저와 Discord ID가 서로 다른 시트 행을 가리킵니다.',
+                    400,
+                );
+            }
+            const existingIndex = entryIdIndex ?? discordIdIndex ?? (
                 uniqueBattleTagIndexes.length === 1
                     ? uniqueBattleTagIndexes[0]
                     : undefined
@@ -496,7 +514,7 @@ export const syncRosterPlayersToUserSheet = async (
 };
 
 /**
- * @description Google Sheets의 기존 6열 또는 Discord ID가 포함된 7열을 유저 시트 행으로 변환한다.
+ * @description Google Sheets의 6·7열을 변환하되 저장 전 모든 행에 필수 Discord ID 입력을 요구한다.
  */
 export const parseUserSheetRows = (text: string): UserSheetDraftEntry[] => {
     const lines = text.replace(/\r/g, '').split('\n').filter(line => line.trim());

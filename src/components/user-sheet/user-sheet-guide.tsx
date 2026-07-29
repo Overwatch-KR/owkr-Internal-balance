@@ -96,7 +96,7 @@ export function UserSheetGuide({ onClose, onStartTour }: UserSheetGuideProps) {
                             </code>
                         </div>
                         <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
-                            기존 6열 데이터도 계속 붙여넣을 수 있으며 Discord ID 칸은 비워 둡니다.
+                            Discord ID는 필수입니다. 기존 6열 데이터를 붙여넣은 경우 각 행의 ID를 모두 입력해야 저장할 수 있습니다.
                         </p>
                     </article>
 
