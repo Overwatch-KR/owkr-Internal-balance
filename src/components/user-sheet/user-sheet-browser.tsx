@@ -140,9 +140,9 @@ export function UserSheetBrowser({
                                 </span>
                                 <span className="mt-1 block truncate font-mono text-[11px] text-slate-600">{entry.battleTag}</span>
                                 <span className={`mt-0.5 block truncate font-mono text-[10px] ${
-                                    entry.discordUserId ? 'text-cyan-300/55' : 'text-slate-700'
+                                    entry.discordUserId ? 'text-cyan-300/55' : 'text-rose-300/75'
                                 }`}>
-                                    Discord ID · {entry.discordUserId || '미등록'}
+                                    Discord ID · {entry.discordUserId || '입력 필요'}
                                 </span>
                                 <span className="mt-2 flex min-w-0 items-center gap-1.5 text-[10px] text-slate-500">
                                     <span className="rounded bg-slate-800/80 px-1.5 py-0.5">탱 {entry.tank || '-'}</span>

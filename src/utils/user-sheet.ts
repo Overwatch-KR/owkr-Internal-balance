@@ -37,6 +37,7 @@ export type UserSheetDraftEntry = Pick<
 >;
 
 export type UserSheetValidationError =
+    | 'REQUIRED_DISCORD_USER_ID'
     | 'INVALID_BATTLE_TAG'
     | 'DUPLICATE_BATTLE_TAG'
     | 'INVALID_DISCORD_USER_ID'
@@ -88,7 +89,9 @@ export const validateUserSheetEntries = (rows: UserSheetDraftEntry[]): {
     const errors = new Map<string, UserSheetValidationError>();
     for (const row of activeRows) {
         const discordUserId = normalizeDiscordUserId(row.discordUserId);
-        if (discordUserId && !/^\d{17,20}$/.test(discordUserId)) {
+        if (!discordUserId) {
+            errors.set(row.id, 'REQUIRED_DISCORD_USER_ID');
+        } else if (!/^\d{17,20}$/.test(discordUserId)) {
             errors.set(row.id, 'INVALID_DISCORD_USER_ID');
         } else if (discordUserId && (discordIdCounts.get(discordUserId) ?? 0) > 1) {
             errors.set(row.id, 'DUPLICATE_DISCORD_USER_ID');
@@ -240,7 +243,7 @@ export const syncRosterPlayersToUserSheet = async (
 };
 
 /**
- * @description Google Sheets의 기존 6열 또는 Discord ID가 포함된 7열을 유저 시트 행으로 변환한다.
+ * @description Google Sheets의 6·7열을 변환하되 저장 전 모든 행에 필수 Discord ID 입력을 요구한다.
  */
 export const parseUserSheetRows = (text: string): UserSheetDraftEntry[] => {
     const lines = text.replace(/\r/g, '').split('\n').filter(line => line.trim());

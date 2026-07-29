@@ -84,7 +84,7 @@ export const suggestRosterIdentity = (
             candidateEntryIds: uniqueIds([...bothMatches, ...battleTagMatches, ...nameMatches]),
             matchKind: 'BATTLE_TAG_AND_NAME',
             player,
-            requiresDiscordUserId: false,
+            requiresDiscordUserId: !bothMatches[0].discordUserId,
             selectedEntryId: bothMatches[0].id,
         };
     }
@@ -93,7 +93,7 @@ export const suggestRosterIdentity = (
             candidateEntryIds: uniqueIds([...battleTagMatches, ...nameMatches]),
             matchKind: 'BATTLE_TAG',
             player,
-            requiresDiscordUserId: false,
+            requiresDiscordUserId: !battleTagMatches[0].discordUserId,
             selectedEntryId: battleTagMatches[0].id,
         };
     }
@@ -102,7 +102,7 @@ export const suggestRosterIdentity = (
             candidateEntryIds: [nameMatches[0].id],
             matchKind: 'DISCORD_NAME',
             player,
-            requiresDiscordUserId: false,
+            requiresDiscordUserId: !nameMatches[0].discordUserId,
             selectedEntryId: nameMatches[0].id,
         };
     }

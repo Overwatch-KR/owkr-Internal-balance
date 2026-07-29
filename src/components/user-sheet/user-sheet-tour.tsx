@@ -87,7 +87,7 @@ const USER_SHEET_TOUR_STEPS: readonly UserSheetTourStep[] = [
         target: '#user-sheet-import',
         fallback: '#user-sheet-editor',
         title: '명단과 표를 한 번에 반영해요',
-        description: 'Discord 명단 가져오기로 신규 유저를 추가하거나, Google Sheets의 7개 열을 편집 표 첫 셀에 붙여넣을 수 있습니다. 기존 6열 형식도 지원합니다. 이 가이드는 저장을 실행하지 않습니다.',
+        description: 'Discord 명단 가져오기로 신규 유저를 추가하거나, Discord ID를 포함한 Google Sheets의 7개 열을 편집 표 첫 셀에 붙여넣을 수 있습니다. ID가 없는 행은 저장할 수 없습니다. 이 가이드는 저장을 실행하지 않습니다.',
     },
     {
         id: 'notes',
