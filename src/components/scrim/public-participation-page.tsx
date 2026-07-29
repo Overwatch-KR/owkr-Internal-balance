@@ -13,6 +13,7 @@ import { useToast } from '../../hooks/use-toast';
 import { AppToast } from '../app-toast';
 import { Skeleton } from '../common/skeleton';
 import { HeroGrid } from './hero-grid';
+import { RosterParticipantSelect } from './roster-participant-select';
 
 interface PublicScrimRecord extends ScrimRecord {
     submittedRosterParticipantIds?: string[];
@@ -135,7 +136,14 @@ export function PublicParticipationPage() {
                     <span>{scrim.startTime}</span>
                 </div>
                 {isVoteLink && voteStatus === 'VOTING_OPEN' && <section className="card"><h2 className="text-lg font-semibold text-white">영웅 밴 투표</h2><p className="mt-1 text-sm text-cyan-200">내전 시작까지 {remainingLabel} 남았습니다. 최대 3명을 선택해 주세요.</p>
-                    <label className="mt-4 block text-sm">내 이름 <select className="input-base mt-1 disabled:cursor-not-allowed disabled:opacity-50" value={hasAvailableParticipantSelection ? participantId : ''} disabled={availableRoster.length === 0} onChange={event => setParticipantId(event.target.value)}><option value="">{availableRoster.length > 0 ? '로스터에서 선택' : '모든 참가자가 투표를 완료했습니다'}</option>{availableRoster.map(person => <option key={person.id} value={person.id}>{person.discordName ?? person.name} ({person.name})</option>)}</select></label>
+                    <div className="mt-4">
+                        <span className="block text-sm font-medium text-slate-200">내 이름</span>
+                        <RosterParticipantSelect
+                            value={hasAvailableParticipantSelection ? participantId : ''}
+                            options={availableRoster}
+                            onChange={setParticipantId}
+                        />
+                    </div>
                     <div className="mt-5"><HeroGrid disabledHeroIds={scrim.usedBanHeroIds} selectedHeroIds={heroIds} onChange={setHeroIds} /></div>
                     {scrim.usedBanHeroIds.length > 0 && <p className="mt-3 text-sm text-slate-400">비활성화된 영웅은 이미 이번 내전에서 밴된 영웅입니다.</p>}
                     <button className="btn-primary mt-5 w-full disabled:opacity-40" disabled={!hasAvailableParticipantSelection || heroIds.length === 0} onClick={() => void submit('vote')}>투표 제출 ({heroIds.length}/3)</button>
