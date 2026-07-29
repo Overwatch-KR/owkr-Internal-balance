@@ -16,6 +16,14 @@ OWKR Balance의 운영 배포 내용을 날짜별로 정리한 문서입니다.
 | 2026-07-16 ~ 2026-07-26 | GitHub Pages |
 | 2026-07-28 ~ 현재 | Vercel Production |
 
+## 미배포
+
+### 2026-07-29
+
+- 로그인 화면에 Discord 관리자 인증의 목적, 이용 정보, OAuth 권한 범위와 세션 유지 시간을 안내하도록 했습니다.
+- 로그인 목적에 사용하지 않는 Discord 프로필 이미지가 세션과 인증 응답에 포함되지 않도록 정리했습니다.
+- 앞으로 기능·운영·정책 변경 시 `CHANGELOG.md`를 함께 갱신하도록 저장소 작업 규칙을 추가했습니다.
+
 ## 2026-07-29
 
 배포: Vercel Production · 기준 커밋: [`64fd34a`](https://github.com/Overwatch-KR/owkr-balance/commit/64fd34ab3c6a99640a666925ff97becbaffb0542)

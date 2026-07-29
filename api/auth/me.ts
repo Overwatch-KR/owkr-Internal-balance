@@ -20,7 +20,6 @@ export default function handler(req: VercelRequest, res: VercelResponse) {
                 id: user.id,
                 username: user.username,
                 globalName: user.globalName,
-                avatar: user.avatar,
             },
             csrfToken: user.csrfToken,
         });

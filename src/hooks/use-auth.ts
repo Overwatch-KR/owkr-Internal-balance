@@ -5,7 +5,6 @@ export interface AuthUser {
     id: string;
     username: string;
     globalName?: string;
-    avatar?: string;
 }
 
 interface AuthResponse {

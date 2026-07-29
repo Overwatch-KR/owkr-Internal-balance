@@ -71,6 +71,13 @@ PlayerName#1234 다3! 플2 골1         # ! = preferred
 - **JSDoc:** Flow-focused, concise, and every JSDoc block must include an `@description` tag; avoid exhaustive narration
 - **CSS:** Keep style files free of comments
 
+## Changelog
+
+- Update the root `CHANGELOG.md` for every user-facing feature, fix, behavior change, operational change, and policy change.
+- Record completed but not yet deployed work under `미배포` using the current `Asia/Seoul` date.
+- After a production deployment, move the corresponding entries into that date's deployment section and include the deployed commit.
+- Preserve existing deployment history; do not rewrite or remove past entries unless correcting inaccurate information.
+
 ## Important Files
 
 - `src/utils/balance/index.ts` - Core balancing algorithm (most complex logic)

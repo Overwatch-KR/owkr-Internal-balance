@@ -1,3 +1,11 @@
+import { RefreshCcw } from 'lucide-react';
+import { DiscordLoginPolicy } from './discord-login-policy';
+
+interface LoginScreenProps {
+    serviceError?: string | null;
+    onRetry?: () => void;
+}
+
 const BACKGROUND_IMAGES = [
     'background/kiriko.jpg',
     'background/le-sserafim.jpg',
@@ -13,7 +21,7 @@ const LoginScreen = ({ serviceError, onRetry }: LoginScreenProps) => {
     const loginError = new URLSearchParams(window.location.search).get('loginError');
 
     return (
-        <main className="login-scene relative min-h-screen overflow-hidden bg-[#080a0f] text-white">
+        <main className="login-scene relative min-h-screen overflow-x-hidden bg-[#080a0f] text-white">
             <div
                 className="login-background"
                 style={{ backgroundImage: `url(${import.meta.env.BASE_URL}${backgroundImage})` }}
@@ -55,6 +63,7 @@ const LoginScreen = ({ serviceError, onRetry }: LoginScreenProps) => {
                         </button>
                     )}
                     <p className="mt-5 text-xs text-slate-500">등록된 관리자만 접근 가능합니다.</p>
+                    <DiscordLoginPolicy />
                 </div>
             </div>
         </main>
@@ -62,9 +71,3 @@ const LoginScreen = ({ serviceError, onRetry }: LoginScreenProps) => {
 };
 
 export default LoginScreen;
-import { RefreshCcw } from 'lucide-react';
-
-interface LoginScreenProps {
-    serviceError?: string | null;
-    onRetry?: () => void;
-}
