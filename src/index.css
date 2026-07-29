@@ -194,9 +194,15 @@
     background-size: cover;
     filter: blur(5px) saturate(1.08) brightness(0.68);
     inset: -2rem;
-    opacity: 0.72;
+    opacity: 0;
+    pointer-events: none;
     transform: scale(1.04);
+    transition: opacity 1.6s ease-in-out;
     animation: login-background-drift 26s ease-in-out infinite alternate;
+}
+
+.login-background-active {
+    opacity: 0.72;
 }
 
 .login-ambient {
@@ -266,6 +272,10 @@
     .login-scene::before,
     .login-ambient {
         animation: none;
+    }
+
+    .login-background {
+        transition: none;
     }
 }
 

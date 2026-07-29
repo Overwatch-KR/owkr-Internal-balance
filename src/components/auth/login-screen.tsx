@@ -1,30 +1,53 @@
 import { RefreshCcw } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import {
+    LOGIN_BACKGROUND_IMAGES,
+    LOGIN_BACKGROUND_ROTATION_INTERVAL_MS,
+    pickRandomBackgroundIndex,
+} from './login-background';
 
 interface LoginScreenProps {
     serviceError?: string | null;
     onRetry?: () => void;
 }
 
-const BACKGROUND_IMAGES = [
-    'background/kiriko.jpg',
-    'background/le-sserafim.jpg',
-    'background/quest-watch.jpg',
-    'background/sion.jpg',
-] as const;
-
 /**
  * @description OWKR Balance의 Discord 관리자 로그인 화면을 제공한다.
  */
 const LoginScreen = ({ serviceError, onRetry }: LoginScreenProps) => {
-    const backgroundImage = BACKGROUND_IMAGES[window.location.hostname.length % BACKGROUND_IMAGES.length];
+    const [activeBackgroundIndex, setActiveBackgroundIndex] = useState(
+        () => pickRandomBackgroundIndex(),
+    );
     const loginError = new URLSearchParams(window.location.search).get('loginError');
+
+    useEffect(() => {
+        const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+        if (reducedMotionQuery.matches) {
+            return;
+        }
+
+        const intervalId = window.setInterval(() => {
+            setActiveBackgroundIndex((currentIndex) => pickRandomBackgroundIndex(currentIndex));
+        }, LOGIN_BACKGROUND_ROTATION_INTERVAL_MS);
+
+        return () => window.clearInterval(intervalId);
+    }, []);
 
     return (
         <main className="login-scene relative min-h-screen overflow-hidden bg-[#080a0f] text-white">
-            <div
-                className="login-background"
-                style={{ backgroundImage: `url(${import.meta.env.BASE_URL}${backgroundImage})` }}
-            />
+            {LOGIN_BACKGROUND_IMAGES.map((backgroundImage, index) => (
+                <div
+                    key={backgroundImage}
+                    aria-hidden="true"
+                    className={
+                        index === activeBackgroundIndex
+                            ? 'login-background login-background-active'
+                            : 'login-background'
+                    }
+                    style={{ backgroundImage: `url(${import.meta.env.BASE_URL}${backgroundImage})` }}
+                />
+            ))}
             <div className="login-ambient login-ambient-a" />
             <div className="login-ambient login-ambient-b" />
 
