@@ -2,5 +2,19 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
   "buildCommand": "pnpm build",
-  "outputDirectory": "dist"
+  "outputDirectory": "dist",
+  "rewrites": [
+    {
+      "source": "/scrims",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/participate/:token",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/discord-login-policy",
+      "destination": "/index.html"
+    }
+  ]
 }
