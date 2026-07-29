@@ -197,6 +197,9 @@ export function RosterIdentityResolver({
         const resolvedEntry = getResolvedEntry(draft);
         return {
             ...draft.player,
+            discordName: draft.player.discordName?.trim()
+                || resolvedEntry?.discordName
+                || undefined,
             discordUserId: discordUserId || resolvedEntry?.discordUserId,
             userSheetEntryId: resolvedEntry?.id,
         };
@@ -220,7 +223,11 @@ export function RosterIdentityResolver({
         const ranks = getIncomingRanks(draft.player);
         return [
             makeChange('Discord ID', entry.discordUserId, cleanDiscordUserId(draft.discordUserId)),
-            makeChange('Discord 이름', entry.discordName, draft.player.discordName),
+            makeChange(
+                'Discord 이름',
+                entry.discordName,
+                draft.player.discordName?.trim() || entry.discordName,
+            ),
             makeChange('배틀태그', entry.battleTag, draft.player.name),
             ...(draft.syncTiers ? [
                 makeChange('탱커', entry.tank, ranks.tank),
@@ -636,7 +643,9 @@ export function RosterIdentityResolver({
                                 </span>
                             ) : unresolvedCount > 0
                                 ? `${unresolvedCount}명 확인 필요`
-                                : `명단 적용 및 유저 시트 ${sheetChangeCount}명 갱신`}
+                                : sheetChangeCount > 0
+                                    ? `명단 적용 및 유저 시트 ${sheetChangeCount}명 갱신`
+                                    : '명단 적용 · 시트 변경 없음'}
                         </button>
                     </div>
                 </footer>
