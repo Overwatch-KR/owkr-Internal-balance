@@ -24,11 +24,6 @@ export interface PlayerInputs {
     sAvoid: boolean;
 }
 
-export interface PendingRosterImport {
-    incoming: Player[];
-    failedLines: string[];
-}
-
 /**
  * @description 수동 참가자 입력 폼의 초기값을 만든다.
  */
@@ -60,13 +55,12 @@ const getEditableDivision = (tier: Tier, division: number | string): string => {
 };
 
 /**
- * @description 참가자 입력, 편집, 가져오기 미리보기와 접힘 상태를 관리한다.
+ * @description 참가자 입력, 편집, 붙여넣기 검사와 접힘 상태를 관리한다.
  */
 export const usePlayerInput = (initialPlayerCount: number) => {
     const [inputs, setInputs] = useState(createDefaultPlayerInputs);
     const [pasteText, setPasteText] = useState('');
     const [failedParses, setFailedParses] = useState<string[]>([]);
-    const [pendingRosterImport, setPendingRosterImport] = useState<PendingRosterImport | null>(null);
     const [inputMode, setInputMode] = useState<PlayerInputMode>('discord');
     const [editingPlayerId, setEditingPlayerId] = useState<number | null>(null);
     const [isInputCollapsed, setIsInputCollapsed] = useState(initialPlayerCount > 0);
@@ -106,8 +100,7 @@ export const usePlayerInput = (initialPlayerCount: number) => {
             pasteText.trim()
             || inputs.name.trim()
             || inputs.discordName.trim()
-            || inputs.noMic
-            || pendingRosterImport,
+            || inputs.noMic,
         );
         if (!hasUnsavedInput) return;
 
@@ -118,7 +111,7 @@ export const usePlayerInput = (initialPlayerCount: number) => {
 
         window.addEventListener('beforeunload', warnBeforeUnload);
         return () => window.removeEventListener('beforeunload', warnBeforeUnload);
-    }, [inputs.discordName, inputs.name, inputs.noMic, pasteText, pendingRosterImport]);
+    }, [inputs.discordName, inputs.name, inputs.noMic, pasteText]);
 
     const resetInputs = useCallback(() => {
         setEditingPlayerId(null);
@@ -155,7 +148,6 @@ export const usePlayerInput = (initialPlayerCount: number) => {
 
     const updatePasteText = useCallback((value: string) => {
         setPasteText(value);
-        setPendingRosterImport(null);
     }, []);
 
     return {
@@ -169,7 +161,6 @@ export const usePlayerInput = (initialPlayerCount: number) => {
         pasteText,
         pasteAvoidedRoleWarnings,
         isPasteValidationPending,
-        pendingRosterImport,
         resetInputs,
         selectInputMode,
         setEditingPlayerId,
@@ -179,7 +170,6 @@ export const usePlayerInput = (initialPlayerCount: number) => {
         setInputs,
         setIsInputCollapsed,
         setPasteText,
-        setPendingRosterImport,
         updatePasteText,
     };
 };

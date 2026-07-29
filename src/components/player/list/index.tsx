@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { AlertCircle, Clock, FileSpreadsheet, MicOff, NotebookPen, Pencil, Trash2, Users } from 'lucide-react';
 import type { Player } from '../../../types';
 import {
-    normalizeUserSheetBattleTag,
+    getPlayerUserSheetLookupKey,
     type UserSheetEntry,
 } from '../../../utils/user-sheet';
 import { BattleTagCopyButton } from '../battle-tag-copy-button';
@@ -19,7 +19,7 @@ interface PlayerListProps {
     csrfToken: string;
     noteCacheScope: string;
     userSheetByBattleTag: Map<string, UserSheetEntry>;
-    onOpenUserSheet: (battleTag: string) => void;
+    onOpenUserSheet: (battleTag: string, entryId?: string) => void;
 }
 
 type PlayerListTab = 'participants' | 'waitlist';
@@ -62,7 +62,7 @@ const PlayerList = ({
     };
 
     const renderPlayerItem = (player: Player, isWaitlist = false) => {
-        const sheetEntry = userSheetByBattleTag.get(normalizeUserSheetBattleTag(player.name));
+        const sheetEntry = userSheetByBattleTag.get(getPlayerUserSheetLookupKey(player));
         return (
         <li
             key={player.id}
@@ -105,7 +105,7 @@ const PlayerList = ({
                     {sheetEntry && (
                         <button
                             type="button"
-                            onClick={() => onOpenUserSheet(player.name)}
+                            onClick={() => onOpenUserSheet(player.name, sheetEntry.id)}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-md text-emerald-300 transition-colors hover:bg-emerald-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70"
                             aria-label={`${player.discordName ?? player.name} 유저 시트 정보 조회`}
                             title="유저 시트 정보"

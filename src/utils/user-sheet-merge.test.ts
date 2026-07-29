@@ -17,6 +17,20 @@ const row = (
 });
 
 describe('mergeUserSheetDrafts', () => {
+    it('Discord ID 변경도 다른 공용 필드처럼 병합한다', () => {
+        const base = row('1', { discordUserId: '' });
+        const draft = row('1', { discordUserId: '11111111111111111' });
+        const latest = row('1', { note: '최신 특이사항' });
+
+        const result = mergeUserSheetDrafts([base], [draft], [latest]);
+
+        expect(result.conflicts).toHaveLength(0);
+        expect(result.rows[0]).toMatchObject({
+            discordUserId: '11111111111111111',
+            note: '최신 특이사항',
+        });
+    });
+
     it('서로 다른 필드 변경은 자동 병합한다', () => {
         const base = row('1');
         const draft = row('1', { tank: '마3' });
@@ -74,7 +88,7 @@ describe('mergeUserSheetDrafts', () => {
             [latest],
             { '1:presence': 'LATEST' },
         );
-        expect(resolved.rows).toEqual([latest]);
+        expect(resolved.rows).toEqual([{ ...latest, discordUserId: '' }]);
     });
 
     it('서버 신규 행은 내 초안 뒤에 보존한다', () => {

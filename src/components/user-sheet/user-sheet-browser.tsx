@@ -55,6 +55,7 @@ export function UserSheetBrowser({
         if (!normalizedQuery) return entries;
         return entries.filter(entry => (
             entry.discordName.toLowerCase().includes(normalizedQuery)
+            || entry.discordUserId?.includes(normalizedQuery)
             || entry.battleTag.toLowerCase().includes(normalizedQuery)
             || entry.note.toLowerCase().includes(normalizedQuery)
             || entry.tank.toLowerCase().includes(normalizedQuery)
@@ -91,7 +92,7 @@ export function UserSheetBrowser({
                         <input
                             value={query}
                             onChange={event => onQueryChange(event.target.value)}
-                            placeholder="이름·배틀태그·특이사항 검색"
+                            placeholder="이름·Discord ID·배틀태그 검색"
                             className="h-9 w-full rounded-lg border border-slate-800 bg-surface pl-9 pr-9 text-xs text-slate-200 outline-none focus:border-cyan-400"
                         />
                         {query && (
@@ -138,6 +139,11 @@ export function UserSheetBrowser({
                                     )}
                                 </span>
                                 <span className="mt-1 block truncate font-mono text-[11px] text-slate-600">{entry.battleTag}</span>
+                                <span className={`mt-0.5 block truncate font-mono text-[10px] ${
+                                    entry.discordUserId ? 'text-cyan-300/55' : 'text-rose-300/75'
+                                }`}>
+                                    Discord ID · {entry.discordUserId || '입력 필요'}
+                                </span>
                                 <span className="mt-2 flex min-w-0 items-center gap-1.5 text-[10px] text-slate-500">
                                     <span className="rounded bg-slate-800/80 px-1.5 py-0.5">탱 {entry.tank || '-'}</span>
                                     <span className="rounded bg-slate-800/80 px-1.5 py-0.5">딜 {entry.dps || '-'}</span>

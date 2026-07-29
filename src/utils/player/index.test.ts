@@ -12,6 +12,25 @@ const createPlayer = (id: number, name: string, discordName?: string): Player =>
 });
 
 describe('reconcilePlayers', () => {
+    it('배틀태그가 같아도 Discord ID가 다르면 두 참가자를 유지한다', () => {
+        const first = {
+            ...createPlayer(1, 'Same#1234', '첫 번째'),
+            discordUserId: '11111111111111111',
+        };
+        const second = {
+            ...createPlayer(2, 'Same#1234', '두 번째'),
+            discordUserId: '22222222222222222',
+        };
+
+        const reconciled = reconcilePlayers([], [first, second], 'replace');
+
+        expect(reconciled.players).toHaveLength(2);
+        expect(reconciled.players.map(player => player.discordUserId)).toEqual([
+            '11111111111111111',
+            '22222222222222222',
+        ]);
+    });
+
     it('새 명단으로 교체하면서 기존 ID를 유지하고 빠진 참가자를 제외한다', () => {
         const existing = [
             createPlayer(1, 'Player#1234'),

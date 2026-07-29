@@ -6,6 +6,7 @@ import type {
 export type UserSheetMergeChoice = 'DRAFT' | 'LATEST';
 export type UserSheetMergeField =
     | 'discordName'
+    | 'discordUserId'
     | 'battleTag'
     | 'tank'
     | 'dps'
@@ -34,6 +35,7 @@ export type UserSheetMergeResolutions = Readonly<Record<string, UserSheetMergeCh
 
 const MERGE_FIELDS: ReadonlyArray<Exclude<UserSheetMergeField, 'presence'>> = [
     'discordName',
+    'discordUserId',
     'battleTag',
     'tank',
     'dps',
@@ -43,6 +45,7 @@ const MERGE_FIELDS: ReadonlyArray<Exclude<UserSheetMergeField, 'presence'>> = [
 
 const FIELD_LABELS: Record<UserSheetMergeField, string> = {
     discordName: '디스코드 이름',
+    discordUserId: 'Discord ID',
     battleTag: '배틀태그',
     tank: '탱커 티어',
     dps: '딜러 티어',
@@ -55,6 +58,7 @@ const toDraftEntry = (
     entry: UserSheetDraftEntry | UserSheetEntry,
 ): UserSheetDraftEntry => ({
     id: entry.id,
+    discordUserId: entry.discordUserId ?? '',
     discordName: entry.discordName,
     battleTag: entry.battleTag,
     tank: entry.tank,
@@ -66,7 +70,9 @@ const toDraftEntry = (
 const isSameEntry = (
     first: UserSheetDraftEntry,
     second: UserSheetDraftEntry,
-): boolean => MERGE_FIELDS.every(field => first[field] === second[field]);
+): boolean => MERGE_FIELDS.every(field => (
+    (first[field] ?? '') === (second[field] ?? '')
+));
 
 const getRowLabel = (
     ...entries: Array<UserSheetDraftEntry | undefined>
@@ -186,9 +192,9 @@ export const mergeUserSheetDrafts = (
         const merged = { ...draft };
         const rowLabel = getRowLabel(draft, latest, base);
         for (const field of MERGE_FIELDS) {
-            const baseValue = base[field];
-            const draftValue = draft[field];
-            const latestValue = latest[field];
+            const baseValue = base[field] ?? '';
+            const draftValue = draft[field] ?? '';
+            const latestValue = latest[field] ?? '';
             if (draftValue === latestValue) {
                 merged[field] = draftValue;
             } else if (draftValue === baseValue) {

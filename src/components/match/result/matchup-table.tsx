@@ -6,7 +6,7 @@ import type { MatchResultData, Player, Role, SwapSource, Tier } from '../../../t
 import { DamageIcon, SupportIcon, TankIcon } from '../../roles/icon';
 import { getTierImage } from '../../../utils/tier';
 import {
-    normalizeUserSheetBattleTag,
+    getPlayerUserSheetLookupKey,
     type UserSheetEntry,
 } from '../../../utils/user-sheet';
 import PlayerTooltip from './player-tooltip';
@@ -248,10 +248,10 @@ const MatchupTable = ({
                 const slotKeyA = `A-${row.role}-${row.arrayIndex}`;
                 const slotKeyB = `B-${row.role}-${row.arrayIndex}`;
                 const sheetNoteA = userSheetByBattleTag?.get(
-                    normalizeUserSheetBattleTag(row.playerA.name),
+                    getPlayerUserSheetLookupKey(row.playerA),
                 )?.note;
                 const sheetNoteB = userSheetByBattleTag?.get(
-                    normalizeUserSheetBattleTag(row.playerB.name),
+                    getPlayerUserSheetLookupKey(row.playerB),
                 )?.note;
                 const rowHasSheetNote = Boolean(sheetNoteA?.trim() || sheetNoteB?.trim());
 

@@ -1,5 +1,6 @@
 import {
     AlertCircle,
+    Fingerprint,
     Loader2,
     MessageSquareText,
     NotebookPen,
@@ -18,6 +19,7 @@ import { BattleTagCopyButton } from '../player/battle-tag-copy-button';
 import PlayerNoteEditor from '../player/list/player-note-editor';
 
 export type UserSheetEntryField =
+    | 'discordUserId'
     | 'discordName'
     | 'battleTag'
     | 'tank'
@@ -114,6 +116,18 @@ export function UserSheetEntryContent({
                                             aria-invalid={Boolean(validationMessage)}
                                         />
                                     </label>
+                                    <label className="grid gap-1.5 text-xs text-slate-500 sm:col-span-2">
+                                        Discord 고유 ID <span className="text-rose-300">*</span>
+                                        <input
+                                            value={draft.discordUserId ?? ''}
+                                            onChange={event => onFieldChange('discordUserId', event.target.value.replace(/\D/g, ''))}
+                                            className="h-10 rounded-lg border border-slate-700 bg-surface px-3 font-mono text-sm text-slate-100 outline-none focus:border-cyan-400"
+                                            inputMode="numeric"
+                                            required
+                                            autoComplete="off"
+                                            placeholder="필수 · 17~20자리 숫자"
+                                        />
+                                    </label>
                                 </div>
                             </>
                         ) : (
@@ -125,6 +139,12 @@ export function UserSheetEntryContent({
                                     <p className="min-w-0 break-all font-mono text-sm text-slate-400">{entry.battleTag}</p>
                                     <BattleTagCopyButton battleTag={entry.battleTag} />
                                 </div>
+                                <p className={`mt-2 inline-flex items-center gap-1.5 font-mono text-[11px] ${
+                                    entry.discordUserId ? 'text-slate-500' : 'text-rose-300'
+                                }`}>
+                                    <Fingerprint size={12} aria-hidden="true" />
+                                    Discord ID · {entry.discordUserId || '입력 필요'}
+                                </p>
                             </>
                         )}
                     </div>

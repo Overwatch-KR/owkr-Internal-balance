@@ -1,0 +1,673 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+    AlertCircle,
+    ArrowRight,
+    CheckCircle2,
+    Fingerprint,
+    Link2,
+    RefreshCw,
+    UserPlus,
+    X,
+} from 'lucide-react';
+import { formatRank } from '../../../constants';
+import type { Player } from '../../../types';
+import { reconcilePlayers, type RosterImportMode } from '../../../utils/player';
+import type { UserSheetEntry } from '../../../utils/user-sheet';
+import { cleanUserSheetRank } from '../../../utils/user-sheet';
+import {
+    cleanDiscordUserId,
+    isValidDiscordUserId,
+    normalizeDiscordName,
+    suggestRosterIdentities,
+    type RosterIdentitySuggestion,
+} from '../../../utils/player-identity';
+
+export interface RosterIdentityResolution {
+    mode: RosterImportMode;
+    players: Player[];
+    syncTierPlayerIds: number[];
+}
+
+interface RosterIdentityResolverProps {
+    currentPlayers: Player[];
+    entries: UserSheetEntry[];
+    failedLines: string[];
+    isSubmitting: boolean;
+    onApplyRosterOnly: (resolution: RosterIdentityResolution) => void;
+    onCancel: () => void;
+    onConfirm: (resolution: RosterIdentityResolution) => void;
+    players: Player[];
+    submitError: string;
+}
+
+interface ResolutionDraft extends RosterIdentitySuggestion {
+    discordUserId: string;
+    selectedEntryId: string;
+    syncTiers: boolean;
+}
+
+interface FieldChange {
+    after: string;
+    before: string;
+    label: string;
+}
+
+const MATCH_LABELS: Record<RosterIdentitySuggestion['matchKind'], string> = {
+    DISCORD_ID: 'Discord ID 일치',
+    BATTLE_TAG_AND_NAME: '이름·배틀태그 일치',
+    BATTLE_TAG: '배틀태그 일치',
+    DISCORD_NAME: '이름으로 추천',
+    AMBIGUOUS: '후보 확인 필요',
+    NEW: '신규 유저',
+};
+
+const makeDrafts = (
+    players: Player[],
+    entries: UserSheetEntry[],
+): ResolutionDraft[] => suggestRosterIdentities(players, entries).map(suggestion => {
+    const selectedEntry = entries.find(entry => entry.id === suggestion.selectedEntryId);
+    return {
+        ...suggestion,
+        discordUserId: selectedEntry?.discordUserId ?? suggestion.player.discordUserId ?? '',
+        requiresDiscordUserId: suggestion.requiresDiscordUserId
+            || !selectedEntry?.discordUserId,
+        selectedEntryId: suggestion.selectedEntryId ?? '',
+        syncTiers: true,
+    };
+});
+
+const getIncomingRanks = (player: Player) => ({
+    tank: cleanUserSheetRank(formatRank(player.tank)),
+    dps: cleanUserSheetRank(formatRank(player.dps)),
+    support: cleanUserSheetRank(formatRank(player.sup)),
+});
+
+const makeChange = (
+    label: string,
+    before: string | undefined,
+    after: string | undefined,
+): FieldChange | null => {
+    const previous = before?.trim() ?? '';
+    const next = after?.trim() ?? '';
+    return previous === next ? null : {
+        after: next || '미등록',
+        before: previous || '미등록',
+        label,
+    };
+};
+
+/**
+ * @description 신규·중복 참가자 식별, 명단 적용 방식, 유저 시트 갱신 범위를 한 화면에서 확정한다.
+ */
+export function RosterIdentityResolver({
+    currentPlayers,
+    entries,
+    failedLines,
+    isSubmitting,
+    onApplyRosterOnly,
+    onCancel,
+    onConfirm,
+    players,
+    submitError,
+}: RosterIdentityResolverProps) {
+    const [drafts, setDrafts] = useState<ResolutionDraft[]>(() => makeDrafts(players, entries));
+    const [mode, setMode] = useState<RosterImportMode>('replace');
+    const [bulkText, setBulkText] = useState('');
+    const [bulkMessage, setBulkMessage] = useState('');
+    const entriesById = useMemo(() => new Map(entries.map(entry => [entry.id, entry])), [entries]);
+    const entriesByDiscordId = useMemo(() => new Map(
+        entries.flatMap(entry => (
+            entry.discordUserId ? [[entry.discordUserId, entry] as const] : []
+        )),
+    ), [entries]);
+
+    useEffect(() => {
+        const previousOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape' && !isSubmitting) onCancel();
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => {
+            document.body.style.overflow = previousOverflow;
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [isSubmitting, onCancel]);
+
+    const getResolvedEntry = useCallback((draft: ResolutionDraft): UserSheetEntry | undefined => {
+        const discordUserId = cleanDiscordUserId(draft.discordUserId);
+        return entriesByDiscordId.get(discordUserId)
+            ?? entriesById.get(draft.selectedEntryId);
+    }, [entriesByDiscordId, entriesById]);
+
+    const duplicateIds = useMemo(() => {
+        const counts = new Map<string, number>();
+        drafts.forEach(draft => {
+            const id = cleanDiscordUserId(draft.discordUserId);
+            if (id) counts.set(id, (counts.get(id) ?? 0) + 1);
+        });
+        return new Set(
+            [...counts.entries()].filter(([, count]) => count > 1).map(([id]) => id),
+        );
+    }, [drafts]);
+    const duplicateEntryIds = useMemo(() => {
+        const counts = new Map<string, number>();
+        drafts.forEach(draft => {
+            const entryId = getResolvedEntry(draft)?.id;
+            if (entryId) counts.set(entryId, (counts.get(entryId) ?? 0) + 1);
+        });
+        return new Set(
+            [...counts.entries()].filter(([, count]) => count > 1).map(([id]) => id),
+        );
+    }, [drafts, getResolvedEntry]);
+
+    const getDraftError = useCallback((draft: ResolutionDraft): string => {
+        const discordUserId = cleanDiscordUserId(draft.discordUserId);
+        const resolvedEntry = getResolvedEntry(draft);
+        if (draft.requiresDiscordUserId && !discordUserId) {
+            return '신규 또는 중복 후보는 Discord ID가 필요합니다.';
+        }
+        if (discordUserId && !isValidDiscordUserId(discordUserId)) {
+            return 'Discord ID는 17~20자리 숫자여야 합니다.';
+        }
+        if (discordUserId && duplicateIds.has(discordUserId)) {
+            return '같은 Discord ID가 이번 명단에 두 번 입력되었습니다.';
+        }
+        if (resolvedEntry && duplicateEntryIds.has(resolvedEntry.id)) {
+            return '같은 기존 유저가 이번 명단에 두 번 연결되었습니다.';
+        }
+        if (
+            resolvedEntry?.discordUserId
+            && discordUserId
+            && resolvedEntry.discordUserId !== discordUserId
+        ) {
+            return '선택한 기존 유저에 다른 Discord ID가 등록되어 있습니다.';
+        }
+        return '';
+    }, [duplicateEntryIds, duplicateIds, getResolvedEntry]);
+
+    const errors = useMemo(
+        () => drafts.map(getDraftError),
+        [drafts, getDraftError],
+    );
+    const unresolvedCount = errors.filter(Boolean).length;
+    const newCount = drafts.filter(draft => !getResolvedEntry(draft)).length;
+    const matchedCount = drafts.length - newCount;
+
+    const resolvedPlayers = useMemo(() => drafts.map(draft => {
+        const discordUserId = cleanDiscordUserId(draft.discordUserId);
+        const resolvedEntry = getResolvedEntry(draft);
+        return {
+            ...draft.player,
+            discordName: draft.player.discordName?.trim()
+                || resolvedEntry?.discordName
+                || undefined,
+            discordUserId: discordUserId || resolvedEntry?.discordUserId,
+            userSheetEntryId: resolvedEntry?.id,
+        };
+    }), [drafts, getResolvedEntry]);
+
+    const resolution = useMemo<RosterIdentityResolution>(() => ({
+        mode,
+        players: resolvedPlayers,
+        syncTierPlayerIds: drafts
+            .filter(draft => !getResolvedEntry(draft) || draft.syncTiers)
+            .map(draft => draft.player.id),
+    }), [drafts, getResolvedEntry, mode, resolvedPlayers]);
+    const rosterPreview = useMemo(
+        () => reconcilePlayers(currentPlayers, resolvedPlayers, mode),
+        [currentPlayers, mode, resolvedPlayers],
+    );
+
+    const getDraftChanges = useCallback((draft: ResolutionDraft): FieldChange[] => {
+        const entry = getResolvedEntry(draft);
+        if (!entry) return [];
+        const ranks = getIncomingRanks(draft.player);
+        return [
+            makeChange('Discord ID', entry.discordUserId, cleanDiscordUserId(draft.discordUserId)),
+            makeChange(
+                'Discord 이름',
+                entry.discordName,
+                draft.player.discordName?.trim() || entry.discordName,
+            ),
+            makeChange('배틀태그', entry.battleTag, draft.player.name),
+            ...(draft.syncTiers ? [
+                makeChange('탱커', entry.tank, ranks.tank),
+                makeChange('딜러', entry.dps, ranks.dps),
+                makeChange('힐러', entry.support, ranks.support),
+            ] : []),
+        ].filter((change): change is FieldChange => Boolean(change));
+    }, [getResolvedEntry]);
+    const sheetChangeCount = drafts.filter(draft => (
+        !getResolvedEntry(draft) || getDraftChanges(draft).length > 0
+    )).length;
+    const allExistingTiersEnabled = drafts
+        .filter(draft => getResolvedEntry(draft))
+        .every(draft => draft.syncTiers);
+
+    const updateDraft = (
+        playerId: number,
+        patch: Partial<Pick<
+            ResolutionDraft,
+            'discordUserId' | 'selectedEntryId' | 'syncTiers'
+        >>,
+    ) => {
+        setDrafts(current => current.map(draft => (
+            draft.player.id === playerId ? { ...draft, ...patch } : draft
+        )));
+        setBulkMessage('');
+    };
+
+    const selectEntry = (draft: ResolutionDraft, entryId: string) => {
+        const entry = entriesById.get(entryId);
+        updateDraft(draft.player.id, {
+            selectedEntryId: entryId,
+            discordUserId: entry?.discordUserId
+                ?? (entryId ? draft.discordUserId : ''),
+        });
+    };
+
+    const updateDiscordUserId = (draft: ResolutionDraft, value: string) => {
+        const discordUserId = cleanDiscordUserId(value);
+        const idMatchedEntry = entriesByDiscordId.get(discordUserId);
+        updateDraft(draft.player.id, {
+            discordUserId,
+            selectedEntryId: idMatchedEntry?.id
+                ?? (draft.matchKind === 'NEW' ? '' : draft.selectedEntryId),
+        });
+    };
+
+    const applyBulkIds = () => {
+        const parsed = bulkText
+            .split(/\r?\n/)
+            .map(line => {
+                const id = cleanDiscordUserId(line.match(/(?:<@!?)?\d{17,20}>?/)?.[0] ?? '');
+                const label = line.replace(/(?:<@!?)?\d{17,20}>?/, '').trim();
+                return { id, label };
+            })
+            .filter(item => item.id);
+        if (parsed.length === 0) {
+            setBulkMessage('붙여넣은 내용에서 Discord ID를 찾지 못했습니다.');
+            return;
+        }
+
+        setDrafts(current => {
+            const next = current.map(draft => ({ ...draft }));
+            const sequentialTargets = next.filter(draft => draft.requiresDiscordUserId);
+            for (const [index, item] of parsed.entries()) {
+                const normalizedLabel = normalizeDiscordName(item.label);
+                const labeledTarget = normalizedLabel
+                    ? next.find(draft => [
+                        draft.player.discordName ?? '',
+                        draft.player.name,
+                        draft.player.name.split('#')[0],
+                    ].some(value => normalizeDiscordName(value) === normalizedLabel))
+                    : undefined;
+                const target = labeledTarget ?? sequentialTargets[index];
+                if (!target) continue;
+                target.discordUserId = item.id;
+                const existing = entriesByDiscordId.get(item.id);
+                if (existing) target.selectedEntryId = existing.id;
+            }
+            return next;
+        });
+        setBulkMessage(`${parsed.length}개의 Discord ID를 입력란에 반영했습니다.`);
+    };
+
+    const toggleAllExistingTiers = () => {
+        const nextValue = !allExistingTiersEnabled;
+        setDrafts(current => current.map(draft => (
+            getResolvedEntry(draft) ? { ...draft, syncTiers: nextValue } : draft
+        )));
+    };
+
+    return (
+        <div
+            className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/90 p-2 backdrop-blur-sm md:p-5"
+            role="presentation"
+            onMouseDown={event => {
+                if (event.target === event.currentTarget && !isSubmitting) onCancel();
+            }}
+        >
+            <section
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="roster-identity-title"
+                className="flex h-[calc(100dvh-1rem)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-700/80 bg-surface-elevated shadow-2xl md:h-[min(900px,calc(100dvh-2.5rem))]"
+            >
+                <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-800 px-4 py-4 md:px-6">
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <Fingerprint size={18} className="text-cyan-300" aria-hidden="true" />
+                            <h2 id="roster-identity-title" className="font-semibold text-white">
+                                참가자 식별 및 적용 검토
+                            </h2>
+                        </div>
+                        <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                            기존 유저 연결과 변경 내용을 확인한 뒤 명단과 유저 시트를 한 번에 반영합니다.
+                        </p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={onCancel}
+                        disabled={isSubmitting}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-white/5 hover:text-slate-200 disabled:opacity-40"
+                        aria-label="식별 검토 닫기"
+                    >
+                        <X size={17} aria-hidden="true" />
+                    </button>
+                </header>
+
+                <div className="grid shrink-0 grid-cols-3 gap-2 border-b border-slate-800 px-4 py-3 md:px-6">
+                    <div className="rounded-lg bg-cyan-500/[0.08] px-3 py-2">
+                        <p className="text-[10px] text-cyan-400/70">기존 연결</p>
+                        <p className="mt-0.5 text-sm font-semibold text-cyan-200">{matchedCount}명</p>
+                    </div>
+                    <div className="rounded-lg bg-violet-500/[0.08] px-3 py-2">
+                        <p className="text-[10px] text-violet-400/70">신규 생성</p>
+                        <p className="mt-0.5 text-sm font-semibold text-violet-200">{newCount}명</p>
+                    </div>
+                    <div className={`rounded-lg px-3 py-2 ${
+                        unresolvedCount > 0 ? 'bg-rose-500/[0.1]' : 'bg-emerald-500/[0.08]'
+                    }`}>
+                        <p className={`text-[10px] ${
+                            unresolvedCount > 0 ? 'text-rose-400/70' : 'text-emerald-400/70'
+                        }`}>확인 필요</p>
+                        <p className={`mt-0.5 text-sm font-semibold ${
+                            unresolvedCount > 0 ? 'text-rose-200' : 'text-emerald-200'
+                        }`}>{unresolvedCount}명</p>
+                    </div>
+                </div>
+
+                <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6">
+                    {currentPlayers.length > 0 && (
+                        <div className="mb-4 rounded-xl border border-slate-800 bg-surface p-3">
+                            <p className="text-xs font-medium text-slate-300">명단 적용 방식</p>
+                            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setMode('replace')}
+                                    className={`rounded-lg border px-3 py-2.5 text-left transition-colors ${
+                                        mode === 'replace'
+                                            ? 'border-cyan-400/50 bg-cyan-500/10 text-cyan-100'
+                                            : 'border-slate-800 text-slate-400 hover:border-slate-700'
+                                    }`}
+                                >
+                                    <span className="block text-xs font-semibold">현재 명단 교체</span>
+                                    <span className="mt-0.5 block text-[11px] opacity-70">
+                                        유지 {rosterPreview.unchangedCount} · 갱신 {rosterPreview.updatedCount} · 제외 {rosterPreview.removedCount}
+                                    </span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setMode('append')}
+                                    className={`rounded-lg border px-3 py-2.5 text-left transition-colors ${
+                                        mode === 'append'
+                                            ? 'border-cyan-400/50 bg-cyan-500/10 text-cyan-100'
+                                            : 'border-slate-800 text-slate-400 hover:border-slate-700'
+                                    }`}
+                                >
+                                    <span className="block text-xs font-semibold">기존 명단에 추가</span>
+                                    <span className="mt-0.5 block text-[11px] opacity-70">
+                                        갱신 {rosterPreview.updatedCount} · 신규 {rosterPreview.addedCount}
+                                    </span>
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="mb-4 rounded-xl border border-slate-800 bg-surface p-3">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <label htmlFor="bulk-discord-ids" className="text-xs font-medium text-slate-300">
+                                    Discord ID 한 번에 붙여넣기
+                                </label>
+                                <p className="mt-1 text-[11px] text-slate-600">
+                                    `별명 123456789012345678` 형식 또는 미해결 인원 순서대로 한 줄씩 입력하세요.
+                                </p>
+                            </div>
+                            {matchedCount > 0 && (
+                                <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-800 px-2.5 py-2 text-[11px] text-slate-300">
+                                    <input
+                                        type="checkbox"
+                                        checked={allExistingTiersEnabled}
+                                        onChange={toggleAllExistingTiers}
+                                        className="accent-cyan-400"
+                                    />
+                                    기존 유저 티어 변동 함께 반영
+                                </label>
+                            )}
+                        </div>
+                        <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                            <textarea
+                                id="bulk-discord-ids"
+                                value={bulkText}
+                                onChange={event => setBulkText(event.target.value)}
+                                rows={3}
+                                placeholder={'상민 123456789012345678\nPlayer#1234 234567890123456789'}
+                                className="min-h-20 flex-1 resize-y rounded-lg border border-slate-700 bg-slate-950/40 px-3 py-2 font-mono text-xs text-slate-200 outline-none focus:border-cyan-400"
+                                spellCheck={false}
+                            />
+                            <button
+                                type="button"
+                                onClick={applyBulkIds}
+                                className="btn-ghost min-h-10 shrink-0 border border-slate-700 sm:self-end"
+                            >
+                                일괄 반영
+                            </button>
+                        </div>
+                        {bulkMessage && <p className="mt-2 text-[11px] text-cyan-300">{bulkMessage}</p>}
+                    </div>
+
+                    {failedLines.length > 0 && (
+                        <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-400/25 bg-amber-400/[0.07] p-3">
+                            <AlertCircle size={15} className="mt-0.5 shrink-0 text-amber-300" aria-hidden="true" />
+                            <p className="text-[11px] leading-relaxed text-amber-100/75">
+                                해석하지 못한 {failedLines.length}명은 이번 적용에서 제외되고, 적용 후 입력창에서 이어서 보완할 수 있습니다.
+                            </p>
+                        </div>
+                    )}
+
+                    <div className="space-y-2.5">
+                        {drafts.map((draft, index) => {
+                            const error = errors[index];
+                            const resolvedEntry = getResolvedEntry(draft);
+                            const idMatchedEntry = entriesByDiscordId.get(
+                                cleanDiscordUserId(draft.discordUserId),
+                            );
+                            const changes = getDraftChanges(draft);
+                            const candidates = draft.candidateEntryIds
+                                .map(id => entriesById.get(id))
+                                .filter((entry): entry is UserSheetEntry => Boolean(entry));
+                            if (
+                                resolvedEntry
+                                && !candidates.some(entry => entry.id === resolvedEntry.id)
+                            ) {
+                                candidates.unshift(resolvedEntry);
+                            }
+                            return (
+                                <article
+                                    key={draft.player.id}
+                                    className={`rounded-xl border p-3 ${
+                                        error
+                                            ? 'border-rose-500/30 bg-rose-500/[0.045]'
+                                            : 'border-slate-800 bg-surface'
+                                    }`}
+                                >
+                                    <div className="grid gap-3 lg:grid-cols-[minmax(0,1.2fr)_minmax(180px,0.9fr)_minmax(210px,1fr)]">
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-2">
+                                                {resolvedEntry
+                                                    ? <Link2 size={14} className="shrink-0 text-cyan-300" aria-hidden="true" />
+                                                    : <UserPlus size={14} className="shrink-0 text-violet-300" aria-hidden="true" />}
+                                                <p className="truncate text-sm font-medium text-slate-100">
+                                                    {draft.player.discordName || draft.player.name}
+                                                </p>
+                                                <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${
+                                                    draft.requiresDiscordUserId
+                                                        ? 'bg-amber-500/10 text-amber-300'
+                                                        : 'bg-cyan-500/10 text-cyan-300'
+                                                }`}>
+                                                    {idMatchedEntry && draft.matchKind !== 'DISCORD_ID'
+                                                        ? 'Discord ID로 기존 연결'
+                                                        : MATCH_LABELS[draft.matchKind]}
+                                                </span>
+                                            </div>
+                                            <p className="mt-1 truncate font-mono text-[11px] text-slate-600">
+                                                {draft.player.name}
+                                            </p>
+                                        </div>
+
+                                        <label className="grid gap-1 text-[11px] text-slate-500">
+                                            시트 연결
+                                            <select
+                                                value={resolvedEntry?.id ?? ''}
+                                                onChange={event => selectEntry(draft, event.target.value)}
+                                                className="h-10 min-w-0 rounded-lg border border-slate-700 bg-slate-950/50 px-2 text-xs text-slate-200 outline-none focus:border-cyan-400"
+                                            >
+                                                <option value="">새 유저로 생성 · 미등록 ID만 가능</option>
+                                                {candidates.map(entry => (
+                                                    <option key={entry.id} value={entry.id}>
+                                                        {entry.discordName || '이름 없음'} · {entry.battleTag}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </label>
+
+                                        <label className="grid gap-1 text-[11px] text-slate-500">
+                                            Discord 고유 ID
+                                            <input
+                                                value={draft.discordUserId}
+                                                onChange={event => updateDiscordUserId(
+                                                    draft,
+                                                    event.target.value,
+                                                )}
+                                                inputMode="numeric"
+                                                placeholder="필수 · 17~20자리 숫자"
+                                                className={`h-10 min-w-0 rounded-lg border bg-slate-950/50 px-3 font-mono text-xs outline-none ${
+                                                    error
+                                                        ? 'border-rose-400/60 text-rose-100 focus:border-rose-300'
+                                                        : 'border-slate-700 text-slate-200 focus:border-cyan-400'
+                                                }`}
+                                                aria-invalid={Boolean(error)}
+                                            />
+                                        </label>
+                                    </div>
+
+                                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                                        <div className="flex min-w-0 items-center gap-1.5 text-[11px]">
+                                            {error ? (
+                                                <>
+                                                    <AlertCircle size={12} className="shrink-0 text-rose-300" aria-hidden="true" />
+                                                    <span className="text-rose-200">{error}</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <CheckCircle2 size={12} className="shrink-0 text-emerald-300" aria-hidden="true" />
+                                                    <span className="text-emerald-300">
+                                                        {resolvedEntry
+                                                            ? idMatchedEntry && draft.matchKind !== 'DISCORD_ID'
+                                                                ? `Discord ID로 ${resolvedEntry.discordName || resolvedEntry.battleTag} 기존 행 재연결 · 새 행을 만들지 않음`
+                                                                : changes.length > 0
+                                                                    ? `${changes.length}개 항목 갱신 예정`
+                                                                    : '시트 정보 변경 없음'
+                                                            : '새 유저 시트 행으로 추가'}
+                                                    </span>
+                                                </>
+                                            )}
+                                        </div>
+                                        {resolvedEntry && (
+                                            <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-slate-400">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={draft.syncTiers}
+                                                    onChange={event => updateDraft(draft.player.id, {
+                                                        syncTiers: event.target.checked,
+                                                    })}
+                                                    className="accent-cyan-400"
+                                                />
+                                                티어 변동 반영
+                                            </label>
+                                        )}
+                                    </div>
+
+                                    {!error && (resolvedEntry ? changes.length > 0 : true) && (
+                                        <div className="mt-2 flex flex-wrap gap-1.5">
+                                            {resolvedEntry ? changes.map(change => (
+                                                <span
+                                                    key={change.label}
+                                                    className="inline-flex min-w-0 items-center gap-1 rounded-md bg-slate-950/45 px-2 py-1 text-[10px] text-slate-400"
+                                                >
+                                                    <strong className="font-medium text-slate-300">{change.label}</strong>
+                                                    <span className="max-w-28 truncate">{change.before}</span>
+                                                    <ArrowRight size={10} className="shrink-0 text-cyan-500" aria-hidden="true" />
+                                                    <span className="max-w-28 truncate text-cyan-200">{change.after}</span>
+                                                </span>
+                                            )) : (
+                                                <span className="rounded-md bg-violet-500/[0.08] px-2 py-1 text-[10px] text-violet-200">
+                                                    ID · 이름 · 배틀태그 · 3개 역할 티어 저장
+                                                </span>
+                                            )}
+                                        </div>
+                                    )}
+                                </article>
+                            );
+                        })}
+                    </div>
+
+                    {submitError && (
+                        <div className="mt-4 rounded-xl border border-rose-400/30 bg-rose-500/[0.08] p-3" role="alert">
+                            <div className="flex items-start gap-2">
+                                <AlertCircle size={15} className="mt-0.5 shrink-0 text-rose-300" aria-hidden="true" />
+                                <div>
+                                    <p className="text-xs font-semibold text-rose-100">유저 시트 갱신 실패</p>
+                                    <p className="mt-1 text-[11px] leading-relaxed text-rose-200/75">{submitError}</p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => onApplyRosterOnly(resolution)}
+                                className="mt-3 min-h-9 rounded-lg border border-rose-300/25 px-3 text-xs text-rose-100 hover:bg-rose-400/10"
+                            >
+                                시트 갱신 없이 명단만 적용
+                            </button>
+                        </div>
+                    )}
+                </div>
+
+                <footer className="flex shrink-0 flex-col gap-3 border-t border-slate-800 px-4 py-3 sm:flex-row sm:items-center sm:justify-between md:px-6">
+                    <p className="text-[11px] text-slate-600">
+                        개인 운영 메모와 관리자 특이사항은 자동 갱신하지 않습니다.
+                    </p>
+                    <div className="flex shrink-0 justify-end gap-2">
+                        <button
+                            type="button"
+                            onClick={onCancel}
+                            disabled={isSubmitting}
+                            className="btn-ghost min-h-10 disabled:opacity-40"
+                        >
+                            취소
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => onConfirm(resolution)}
+                            disabled={unresolvedCount > 0 || isSubmitting}
+                            className="btn-primary min-h-10 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                            {isSubmitting ? (
+                                <span className="inline-flex items-center gap-2">
+                                    <RefreshCw size={14} className="animate-spin" aria-hidden="true" />
+                                    유저 시트 갱신 중
+                                </span>
+                            ) : unresolvedCount > 0
+                                ? `${unresolvedCount}명 확인 필요`
+                                : sheetChangeCount > 0
+                                    ? `명단 적용 및 유저 시트 ${sheetChangeCount}명 갱신`
+                                    : '명단 적용 · 시트 변경 없음'}
+                        </button>
+                    </div>
+                </footer>
+            </section>
+        </div>
+    );
+}

@@ -8,6 +8,7 @@ import {
 
 export type UserSheetEditorField =
     | 'discordName'
+    | 'discordUserId'
     | 'battleTag'
     | 'tank'
     | 'dps'
@@ -35,6 +36,7 @@ const COLUMNS: ReadonlyArray<{
     width: string;
 }> = [
     { field: 'discordName', label: '디스코드 이름', placeholder: '상민', width: 'min-w-40' },
+    { field: 'discordUserId', label: 'Discord ID *', placeholder: '필수 · 123456789012345678', width: 'min-w-52' },
     { field: 'battleTag', label: '배틀태그', placeholder: 'Player#1234', width: 'min-w-56' },
     { field: 'tank', label: '탱커', placeholder: '다3', width: 'min-w-28' },
     { field: 'dps', label: '딜러', placeholder: '플1', width: 'min-w-28' },
@@ -43,13 +45,19 @@ const COLUMNS: ReadonlyArray<{
 ];
 
 const ERROR_LABELS: Record<UserSheetValidationError, string> = {
+    REQUIRED_DISCORD_USER_ID: 'ID 필수',
     INVALID_BATTLE_TAG: '형식 오류',
     DUPLICATE_BATTLE_TAG: '중복',
+    INVALID_DISCORD_USER_ID: 'ID 형식 오류',
+    DUPLICATE_DISCORD_USER_ID: 'ID 중복',
 };
 
 const ERROR_DETAILS: Record<UserSheetValidationError, string> = {
+    REQUIRED_DISCORD_USER_ID: '모든 유저의 Discord ID를 입력해 주세요.',
     INVALID_BATTLE_TAG: '배틀태그에 #과 숫자 태그를 포함해 주세요. 예: Player#1234',
-    DUPLICATE_BATTLE_TAG: '같은 배틀태그가 시트에 두 번 입력되어 있습니다.',
+    DUPLICATE_BATTLE_TAG: '같은 배틀태그를 구분하려면 각 유저의 Discord ID가 필요합니다.',
+    INVALID_DISCORD_USER_ID: 'Discord ID는 17~20자리 숫자로 입력해 주세요.',
+    DUPLICATE_DISCORD_USER_ID: '같은 Discord ID가 다른 유저에게도 입력되어 있습니다.',
 };
 
 /**
@@ -66,9 +74,9 @@ export function UserSheetEditorTable({
 }: UserSheetEditorTableProps) {
     return (
         <div className="custom-scrollbar min-h-0 flex-1 overflow-auto">
-            <table className="w-full min-w-[1180px] border-separate border-spacing-0 text-left text-xs">
+            <table className="w-full min-w-[1390px] border-separate border-spacing-0 text-left text-xs">
                 <caption className="sr-only">
-                    디스코드 이름, 배틀태그, 역할별 티어와 특이사항을 편집하는 유저 시트
+                    디스코드 이름과 고유 ID, 배틀태그, 역할별 티어와 특이사항을 편집하는 유저 시트
                 </caption>
                 <thead className="sticky top-0 z-20 bg-slate-900">
                     <tr>
@@ -86,6 +94,11 @@ export function UserSheetEditorTable({
                 <tbody>
                     {rows.map((row, rowIndex) => {
                         const error = errors.get(row.id);
+                        const errorField = error === 'REQUIRED_DISCORD_USER_ID'
+                            || error === 'INVALID_DISCORD_USER_ID'
+                            || error === 'DUPLICATE_DISCORD_USER_ID'
+                            ? 'discordUserId'
+                            : 'battleTag';
                         return (
                             <tr
                                 key={row.id}
@@ -100,13 +113,13 @@ export function UserSheetEditorTable({
                                     <td
                                         key={column.field}
                                         className={`border-b border-r p-0 ${
-                                            error && column.field === 'battleTag'
+                                            error && column.field === errorField
                                                 ? 'border-rose-500/60 bg-rose-500/[0.08]'
                                                 : 'border-slate-800'
                                         }`}
                                     >
                                         <input
-                                            value={row[column.field]}
+                                            value={row[column.field] ?? ''}
                                             onChange={event => onCellChange(
                                                 row.id,
                                                 column.field,
@@ -119,18 +132,23 @@ export function UserSheetEditorTable({
                                                     : rowIndex === 0
                                             )}
                                             autoComplete="off"
+                                            required={column.field === 'discordUserId'}
                                             spellCheck={false}
                                             placeholder={rowIndex === 0 ? column.placeholder : ''}
                                             aria-label={`${rowIndex + 1}행 ${column.label}`}
-                                            aria-invalid={column.field === 'battleTag' && Boolean(error)}
-                                            aria-describedby={column.field === 'battleTag' && error
+                                            aria-invalid={column.field === errorField && Boolean(error)}
+                                            aria-describedby={column.field === errorField && error
                                                 ? `user-sheet-row-error-${row.id}`
                                                 : undefined}
                                             className={`h-11 w-full bg-transparent px-2.5 text-slate-200 outline-none placeholder:text-slate-700 focus:bg-cyan-500/[0.06] focus:ring-2 focus:ring-inset ${
-                                                error && column.field === 'battleTag'
+                                                error && column.field === errorField
                                                     ? 'text-rose-100 focus:ring-rose-400/80'
                                                     : 'focus:ring-cyan-400/70'
-                                            } ${column.field === 'battleTag' ? 'font-mono' : ''}`}
+                                            } ${
+                                                column.field === 'battleTag' || column.field === 'discordUserId'
+                                                    ? 'font-mono'
+                                                    : ''
+                                            }`}
                                         />
                                     </td>
                                 ))}
