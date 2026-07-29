@@ -1,5 +1,4 @@
 import { RefreshCcw } from 'lucide-react';
-import { DiscordLoginPolicy } from './discord-login-policy';
 
 interface LoginScreenProps {
     serviceError?: string | null;
@@ -63,7 +62,12 @@ const LoginScreen = ({ serviceError, onRetry }: LoginScreenProps) => {
                         </button>
                     )}
                     <p className="mt-5 text-xs text-slate-500">등록된 관리자만 접근 가능합니다.</p>
-                    <DiscordLoginPolicy />
+                    <a
+                        href="/discord-login-policy"
+                        className="mt-3 inline-flex min-h-9 items-center rounded-md px-2 text-xs text-slate-500 underline decoration-slate-600 underline-offset-4 transition-colors hover:text-slate-300"
+                    >
+                        Discord 로그인 정보 이용 안내
+                    </a>
                 </div>
             </div>
         </main>
