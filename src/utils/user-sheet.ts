@@ -202,35 +202,40 @@ export const updateUserSheetEntry = async (
     });
 };
 
-export interface AddMissingUserSheetPlayersResult extends UserSheetSnapshot {
+export interface SyncRosterUserSheetResult extends UserSheetSnapshot {
     addedCount: number;
+    tierUpdatedCount: number;
+    updatedCount: number;
 }
 
 /**
- * @description Discord 명단에서 정상 파싱된 유저 중 시트에 없는 배틀태그만 추가한다.
+ * @description 식별 검토가 끝난 Discord 명단의 프로필과 선택된 티어를 한 번에 동기화한다.
  */
-export const addMissingPlayersToUserSheet = async (
+export const syncRosterPlayersToUserSheet = async (
     players: Player[],
+    syncTierPlayerIds: ReadonlySet<number>,
+    sheetVersion: number,
     csrfToken: string,
-): Promise<AddMissingUserSheetPlayersResult> => {
+): Promise<SyncRosterUserSheetResult> => {
     const entries = players.map(player => ({
         entryId: player.userSheetEntryId,
+        clientPlayerId: player.id,
         discordUserId: normalizeDiscordUserId(player.discordUserId) || undefined,
         discordName: player.discordName?.trim() ?? '',
         battleTag: player.name.trim(),
         tank: cleanUserSheetRank(formatRank(player.tank)),
         dps: cleanUserSheetRank(formatRank(player.dps)),
         support: cleanUserSheetRank(formatRank(player.sup)),
-        note: '',
+        syncTiers: syncTierPlayerIds.has(player.id),
     }));
-    return requestJson<AddMissingUserSheetPlayersResult>('/api/user-sheet', {
+    return requestJson<SyncRosterUserSheetResult>('/api/user-sheet', {
         method: 'POST',
         credentials: 'same-origin',
         headers: {
             'Content-Type': 'application/json',
             'X-CSRF-Token': csrfToken,
         },
-        body: JSON.stringify({ entries }),
+        body: JSON.stringify({ entries, sheetVersion }),
     });
 };
 

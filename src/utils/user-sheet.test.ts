@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from 'vitest';
 import { getTierScore } from '../constants';
 import type { Player, Rank, Tier } from '../types';
 import {
-    addMissingPlayersToUserSheet,
     fetchUserSheetConflictSnapshot,
     formatUserSheetChangeSummary,
     getUserSheetChangeSummary,
@@ -10,6 +9,7 @@ import {
     normalizeUserSheetBattleTag,
     parseUserSheetRows,
     saveUserSheet,
+    syncRosterPlayersToUserSheet,
     updateUserSheetEntry,
     validateUserSheetEntries,
     type UserSheetDraftEntry,
@@ -150,33 +150,50 @@ describe('mergeDiscordPlayersIntoUserSheet', () => {
     });
 });
 
-describe('addMissingPlayersToUserSheet', () => {
-    it('정상 Discord 유저 정보를 신규 시트 추가 API 형식으로 전송한다', async () => {
+describe('syncRosterPlayersToUserSheet', () => {
+    it('식별 결과와 선택한 티어 갱신 범위를 시트 버전과 함께 전송한다', async () => {
         const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(
-            JSON.stringify({ addedCount: 1, entries: [], sheetVersion: 4 }),
+            JSON.stringify({
+                addedCount: 0,
+                entries: [],
+                sheetVersion: 4,
+                tierUpdatedCount: 1,
+                updatedCount: 1,
+            }),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
         ));
 
-        const result = await addMissingPlayersToUserSheet(
-            [player('New#1234', '새유저')],
+        const identifiedPlayer = {
+            ...player('New#1234', '새유저'),
+            discordUserId: '123456789012345678',
+            userSheetEntryId: 'sheet-1',
+        };
+        const result = await syncRosterPlayersToUserSheet(
+            [identifiedPlayer],
+            new Set([identifiedPlayer.id]),
+            3,
             'csrf-token',
         );
         const fetchCall = fetchMock.mock.calls[0];
         fetchMock.mockRestore();
 
-        expect(result.addedCount).toBe(1);
+        expect(result.updatedCount).toBe(1);
         expect(fetchCall).toEqual(['/api/user-sheet', expect.objectContaining({
             method: 'POST',
             headers: expect.objectContaining({ 'X-CSRF-Token': 'csrf-token' }),
             body: JSON.stringify({
                 entries: [{
+                    entryId: 'sheet-1',
+                    clientPlayerId: 1,
+                    discordUserId: '123456789012345678',
                     discordName: '새유저',
                     battleTag: 'New#1234',
                     tank: '다3',
                     dps: '플2',
                     support: '마5',
-                    note: '',
+                    syncTiers: true,
                 }],
+                sheetVersion: 3,
             }),
         })]);
     });

@@ -3,6 +3,7 @@ import type { Redis } from '@upstash/redis';
 
 export interface StoredUserSheetEntry {
     id: string;
+    discordUserId?: string;
     discordName: string;
     battleTag: string;
     tank: string;
@@ -23,8 +24,21 @@ export interface UserSheetSnapshot {
 }
 
 export type UserSheetMutationResult =
-    | { status: 'OK'; snapshot: UserSheetSnapshot; addedCount?: number }
-    | { status: 'CONFLICT' | 'DUPLICATE' | 'INVALID' | 'NOT_FOUND' };
+    | {
+        status: 'OK';
+        snapshot: UserSheetSnapshot;
+        addedCount?: number;
+        tierUpdatedCount?: number;
+        updatedCount?: number;
+    }
+    | {
+        status:
+            | 'CONFLICT'
+            | 'DUPLICATE'
+            | 'DUPLICATE_DISCORD_ID'
+            | 'INVALID'
+            | 'NOT_FOUND';
+    };
 
 const LEGACY_USER_SHEET_KEY = 'user-sheet:v1';
 const USER_SHEET_ENTRIES_KEY = 'user-sheet:v2:entries';
@@ -98,14 +112,29 @@ if tonumber(current.updatedAt) ~= tonumber(ARGV[2]) then
     return cjson.encode({ status = 'CONFLICT' })
 end
 
-local duplicateId = redis.call('HGET', KEYS[2], ARGV[3])
-if duplicateId and duplicateId ~= ARGV[1] then
-    return cjson.encode({ status = 'DUPLICATE' })
+local values = redis.call('HVALS', KEYS[1])
+for _, value in ipairs(values) do
+    local other = cjson.decode(value)
+    if other.id ~= ARGV[1] then
+        local otherDiscordId = other.discordUserId or ''
+        if ARGV[5] ~= '' and otherDiscordId == ARGV[5] then
+            return cjson.encode({ status = 'DUPLICATE_DISCORD_ID' })
+        end
+        local otherBattleTag = string.lower(string.gsub(other.battleTag, '^%s*(.-)%s*$', '%1'))
+        if otherBattleTag == ARGV[3] then
+            if ARGV[5] == '' or otherDiscordId == '' or otherDiscordId == ARGV[5] then
+                return cjson.encode({ status = 'DUPLICATE' })
+            end
+        end
+    end
 end
 
 local previousNormalized = string.lower(string.gsub(current.battleTag, '^%s*(.-)%s*$', '%1'))
 if previousNormalized ~= ARGV[3] then
-    redis.call('HDEL', KEYS[2], previousNormalized)
+    local indexedId = redis.call('HGET', KEYS[2], previousNormalized)
+    if indexedId == ARGV[1] then
+        redis.call('HDEL', KEYS[2], previousNormalized)
+    end
 end
 redis.call('HSET', KEYS[1], ARGV[1], ARGV[4])
 redis.call('HSET', KEYS[2], ARGV[3], ARGV[1])
@@ -113,25 +142,11 @@ local nextVersion = redis.call('INCR', KEYS[3])
 return cjson.encode({ status = 'OK', sheetVersion = nextVersion })
 `;
 
-const ADD_USER_SHEET_ENTRIES_SCRIPT = `
-local candidates = cjson.decode(ARGV[1])
-local addedCount = 0
-for _, candidate in ipairs(candidates) do
-    if not redis.call('HGET', KEYS[2], candidate.normalizedBattleTag) then
-        redis.call('HSET', KEYS[1], candidate.entry.id, cjson.encode(candidate.entry))
-        redis.call('HSET', KEYS[2], candidate.normalizedBattleTag, candidate.entry.id)
-        addedCount = addedCount + 1
-    end
-end
-
-local version = tonumber(redis.call('GET', KEYS[3]) or '0')
-if addedCount > 0 then
-    version = redis.call('INCR', KEYS[3])
-end
-return cjson.encode({ status = 'OK', addedCount = addedCount, sheetVersion = version })
-`;
-
 const normalizeBattleTag = (value: string): string => value.trim().toLowerCase();
+
+const normalizeDiscordUserId = (value: unknown): string => (
+    typeof value === 'string' ? value.replace(/\D/g, '').trim() : ''
+);
 
 const sanitizeText = (value: unknown, maxLength: number): string => (
     typeof value === 'string' ? value.trim().slice(0, maxLength) : ''
@@ -156,6 +171,7 @@ const uniqueBattleTags = (values: string[]): string[] => {
 
 const cleanStoredEntry = (entry: StoredUserSheetEntry): StoredUserSheetEntry => ({
     ...entry,
+    discordUserId: normalizeDiscordUserId(entry.discordUserId) || undefined,
     tank: sanitizeRank(entry.tank),
     dps: sanitizeRank(entry.dps),
     support: sanitizeRank(entry.support),
@@ -167,6 +183,7 @@ const cleanStoredEntry = (entry: StoredUserSheetEntry): StoredUserSheetEntry => 
 
 const toPublicEntry = (entry: StoredUserSheetEntry): PublicUserSheetEntry => ({
     id: entry.id,
+    discordUserId: entry.discordUserId,
     discordName: entry.discordName,
     battleTag: entry.battleTag,
     tank: entry.tank,
@@ -199,16 +216,44 @@ const hasSameEditableFields = (
     current: StoredUserSheetEntry,
     next: Pick<
         StoredUserSheetEntry,
-        'discordName' | 'battleTag' | 'tank' | 'dps' | 'support' | 'note'
+        'discordUserId' | 'discordName' | 'battleTag' | 'tank' | 'dps' | 'support' | 'note'
     >,
 ): boolean => (
-    current.discordName === next.discordName
+    (current.discordUserId ?? '') === (next.discordUserId ?? '')
+    && current.discordName === next.discordName
     && current.battleTag === next.battleTag
     && current.tank === next.tank
     && current.dps === next.dps
     && current.support === next.support
     && current.note === next.note
 );
+
+const hasValidIdentityConstraints = (entries: StoredUserSheetEntry[]): boolean => {
+    const discordIds = new Set<string>();
+    const entriesByBattleTag = new Map<string, StoredUserSheetEntry[]>();
+    for (const entry of entries) {
+        const discordUserId = normalizeDiscordUserId(entry.discordUserId);
+        if (discordUserId) {
+            if (!/^\d{17,20}$/.test(discordUserId) || discordIds.has(discordUserId)) {
+                return false;
+            }
+            discordIds.add(discordUserId);
+        }
+        const battleTag = normalizeBattleTag(entry.battleTag);
+        const matches = entriesByBattleTag.get(battleTag) ?? [];
+        matches.push(entry);
+        entriesByBattleTag.set(battleTag, matches);
+    }
+
+    return [...entriesByBattleTag.values()].every(matches => (
+        matches.length <= 1
+        || (
+            matches.every(entry => Boolean(normalizeDiscordUserId(entry.discordUserId)))
+            && new Set(matches.map(entry => normalizeDiscordUserId(entry.discordUserId))).size
+                === matches.length
+        )
+    ));
+};
 
 const parseReplacementEntries = (
     value: unknown,
@@ -217,10 +262,18 @@ const parseReplacementEntries = (
 ): StoredUserSheetEntry[] | null => {
     if (!Array.isArray(value) || value.length > MAX_ENTRIES) return null;
     const currentById = new Map(currentEntries.map(entry => [entry.id, entry]));
-    const currentByBattleTag = new Map(
-        currentEntries.map(entry => [normalizeBattleTag(entry.battleTag), entry]),
-    );
-    const seenBattleTags = new Set<string>();
+    const currentByDiscordId = new Map(currentEntries.flatMap(entry => (
+        entry.discordUserId
+            ? [[normalizeDiscordUserId(entry.discordUserId), entry] as const]
+            : []
+    )));
+    const currentByBattleTag = new Map<string, StoredUserSheetEntry[]>();
+    currentEntries.forEach(entry => {
+        const battleTag = normalizeBattleTag(entry.battleTag);
+        const matches = currentByBattleTag.get(battleTag) ?? [];
+        matches.push(entry);
+        currentByBattleTag.set(battleTag, matches);
+    });
     const seenIds = new Set<string>();
     const now = Date.now();
     const entries: StoredUserSheetEntry[] = [];
@@ -231,16 +284,19 @@ const parseReplacementEntries = (
         const battleTag = sanitizeText(source.battleTag, 100);
         if (!battleTag.includes('#')) return null;
         const normalized = normalizeBattleTag(battleTag);
-        if (seenBattleTags.has(normalized)) return null;
-        seenBattleTags.add(normalized);
 
         const sourceId = sanitizeText(source.id, 200);
-        const current = currentById.get(sourceId) ?? currentByBattleTag.get(normalized);
+        const discordUserId = normalizeDiscordUserId(source.discordUserId);
+        const battleTagMatches = currentByBattleTag.get(normalized) ?? [];
+        const current = currentById.get(sourceId)
+            ?? (discordUserId ? currentByDiscordId.get(discordUserId) : undefined)
+            ?? (battleTagMatches.length === 1 ? battleTagMatches[0] : undefined);
         const id = current?.id ?? randomUUID();
         if (seenIds.has(id)) return null;
         seenIds.add(id);
 
         const editableFields = {
+            discordUserId: discordUserId || undefined,
             discordName: sanitizeText(source.discordName, 100),
             battleTag,
             tank: sanitizeRank(source.tank),
@@ -264,7 +320,7 @@ const parseReplacementEntries = (
             ]),
         });
     }
-    return entries;
+    return hasValidIdentityConstraints(entries) ? entries : null;
 };
 
 const readStoredUserSheet = async (
@@ -359,7 +415,11 @@ export const updateUserSheetEntry = async (
     const source = value as Partial<StoredUserSheetEntry>;
     const id = sanitizeText(source.id, 200);
     const battleTag = sanitizeText(source.battleTag, 100);
+    const discordUserId = normalizeDiscordUserId(source.discordUserId);
     if (!id || !battleTag.includes('#')) return { status: 'INVALID' };
+    if (discordUserId && !/^\d{17,20}$/.test(discordUserId)) {
+        return { status: 'INVALID' };
+    }
 
     await ensureUserSheetStorage(redis);
     const current = await redis.hget<StoredUserSheetEntry>(USER_SHEET_ENTRIES_KEY, id);
@@ -367,6 +427,7 @@ export const updateUserSheetEntry = async (
 
     const nextEntry: StoredUserSheetEntry = {
         ...cleanStoredEntry(current),
+        discordUserId: discordUserId || undefined,
         discordName: sanitizeText(source.discordName, 100),
         battleTag,
         tank: sanitizeRank(source.tank),
@@ -382,7 +443,12 @@ export const updateUserSheetEntry = async (
         ]),
     };
     const result = await redis.eval<string[], {
-        status: 'CONFLICT' | 'DUPLICATE' | 'NOT_FOUND' | 'OK';
+        status:
+            | 'CONFLICT'
+            | 'DUPLICATE'
+            | 'DUPLICATE_DISCORD_ID'
+            | 'NOT_FOUND'
+            | 'OK';
     }>(
         UPDATE_USER_SHEET_ENTRY_SCRIPT,
         [USER_SHEET_ENTRIES_KEY, USER_SHEET_BATTLE_TAGS_KEY, USER_SHEET_VERSION_KEY],
@@ -391,6 +457,7 @@ export const updateUserSheetEntry = async (
             String(expectedUpdatedAt),
             normalizeBattleTag(battleTag),
             JSON.stringify(nextEntry),
+            discordUserId,
         ],
     );
     if (result.status !== 'OK') return { status: result.status };
@@ -398,54 +465,142 @@ export const updateUserSheetEntry = async (
 };
 
 /**
- * @description 현재 없는 BattleTag만 행 Hash와 인덱스에 원자 추가한다.
+ * @description 식별된 참가자 프로필과 선택된 티어 변경을 시트 버전 기준으로 한 번에 저장한다.
  */
-export const addMissingUserSheetEntries = async (
+export const syncRosterUserSheetEntries = async (
     redis: Redis,
     value: unknown,
+    expectedSheetVersion: unknown,
     actorName: string,
 ): Promise<UserSheetMutationResult> => {
-    if (!Array.isArray(value) || value.length > MAX_ENTRIES) return { status: 'INVALID' };
+    if (
+        !Array.isArray(value)
+        || value.length > MAX_ENTRIES
+        || typeof expectedSheetVersion !== 'number'
+        || !Number.isSafeInteger(expectedSheetVersion)
+        || expectedSheetVersion < 0
+    ) {
+        return { status: 'INVALID' };
+    }
+
+    await ensureUserSheetStorage(redis);
+    const current = await readStoredUserSheet(redis);
+    if (current.sheetVersion !== expectedSheetVersion) return { status: 'CONFLICT' };
+
+    const currentById = new Map(current.entries.map(entry => [entry.id, entry]));
+    const currentByDiscordId = new Map(current.entries.flatMap(entry => (
+        entry.discordUserId
+            ? [[normalizeDiscordUserId(entry.discordUserId), entry] as const]
+            : []
+    )));
+    const nextById = new Map(current.entries.map(entry => [entry.id, cleanStoredEntry(entry)]));
+    const usedEntryIds = new Set<string>();
     const now = Date.now();
-    const candidates: Array<{
-        entry: StoredUserSheetEntry;
-        normalizedBattleTag: string;
-    }> = [];
+    let addedCount = 0;
+    let updatedCount = 0;
+    let tierUpdatedCount = 0;
+
     for (const raw of value) {
         if (!raw || typeof raw !== 'object') return { status: 'INVALID' };
-        const source = raw as Partial<StoredUserSheetEntry>;
+        const source = raw as Partial<StoredUserSheetEntry> & {
+            entryId?: unknown;
+            syncTiers?: unknown;
+        };
+        const requestedEntryId = sanitizeText(source.entryId, 200);
+        const discordUserId = normalizeDiscordUserId(source.discordUserId);
         const battleTag = sanitizeText(source.battleTag, 100);
         if (!battleTag.includes('#')) return { status: 'INVALID' };
-        candidates.push({
-            normalizedBattleTag: normalizeBattleTag(battleTag),
-            entry: {
-                id: randomUUID(),
-                discordName: sanitizeText(source.discordName, 100),
-                battleTag,
-                tank: sanitizeRank(source.tank),
-                dps: sanitizeRank(source.dps),
-                support: sanitizeRank(source.support),
-                note: '',
+        if (discordUserId && !/^\d{17,20}$/.test(discordUserId)) {
+            return { status: 'INVALID' };
+        }
+
+        const entryMatch = requestedEntryId ? currentById.get(requestedEntryId) : undefined;
+        const discordMatch = discordUserId ? currentByDiscordId.get(discordUserId) : undefined;
+        if (entryMatch && discordMatch && entryMatch.id !== discordMatch.id) {
+            return { status: 'INVALID' };
+        }
+        const existing = entryMatch ?? discordMatch;
+        if (!existing && !discordUserId) return { status: 'INVALID' };
+        if (
+            existing?.discordUserId
+            && discordUserId
+            && normalizeDiscordUserId(existing.discordUserId) !== discordUserId
+        ) {
+            return { status: 'INVALID' };
+        }
+        if (existing && usedEntryIds.has(existing.id)) return { status: 'INVALID' };
+        if (existing) usedEntryIds.add(existing.id);
+
+        const shouldSyncTiers = !existing || source.syncTiers === true;
+        const tank = shouldSyncTiers ? sanitizeRank(source.tank) : existing?.tank ?? '';
+        const dps = shouldSyncTiers ? sanitizeRank(source.dps) : existing?.dps ?? '';
+        const support = shouldSyncTiers ? sanitizeRank(source.support) : existing?.support ?? '';
+        const editableFields = {
+            discordUserId: discordUserId || existing?.discordUserId || undefined,
+            discordName: sanitizeText(source.discordName, 100),
+            battleTag,
+            tank,
+            dps,
+            support,
+            note: existing?.note ?? '',
+        };
+
+        if (!existing) {
+            const id = randomUUID();
+            nextById.set(id, {
+                id,
+                ...editableFields,
                 createdAt: now,
                 updatedAt: now,
                 updatedByName: actorName,
                 battleTagHistory: [battleTag],
-            },
+            });
+            addedCount++;
+            continue;
+        }
+
+        const tiersChanged = existing.tank !== tank
+            || existing.dps !== dps
+            || existing.support !== support;
+        const unchanged = hasSameEditableFields(existing, editableFields);
+        nextById.set(existing.id, {
+            ...cleanStoredEntry(existing),
+            ...editableFields,
+            updatedAt: unchanged ? existing.updatedAt : Math.max(now, existing.updatedAt + 1),
+            updatedByName: unchanged ? existing.updatedByName : actorName,
+            battleTagHistory: uniqueBattleTags([
+                ...existing.battleTagHistory,
+                existing.battleTag,
+                battleTag,
+            ]),
         });
+        if (!unchanged) updatedCount++;
+        if (shouldSyncTiers && tiersChanged) tierUpdatedCount++;
     }
 
-    await ensureUserSheetStorage(redis);
-    const result = await redis.eval<string[], {
-        addedCount: number;
-        status: 'OK';
-    }>(
-        ADD_USER_SHEET_ENTRIES_SCRIPT,
+    const nextEntries = [...nextById.values()];
+    if (!hasValidIdentityConstraints(nextEntries)) return { status: 'INVALID' };
+    if (addedCount === 0 && updatedCount === 0) {
+        return {
+            status: 'OK',
+            addedCount,
+            tierUpdatedCount,
+            updatedCount,
+            snapshot: toPublicSnapshot(current.entries, current.sheetVersion),
+        };
+    }
+
+    const result = await redis.eval<string[], { status: 'CONFLICT' | 'OK' }>(
+        REPLACE_USER_SHEET_SCRIPT,
         [USER_SHEET_ENTRIES_KEY, USER_SHEET_BATTLE_TAGS_KEY, USER_SHEET_VERSION_KEY],
-        [JSON.stringify(candidates)],
+        [String(expectedSheetVersion), JSON.stringify(nextEntries)],
     );
+    if (result.status !== 'OK') return { status: result.status };
     return {
         status: 'OK',
-        addedCount: Number(result.addedCount) || 0,
+        addedCount,
+        tierUpdatedCount,
+        updatedCount,
         snapshot: await readUserSheetSnapshot(redis),
     };
 };
