@@ -4,9 +4,9 @@ import { sendUnexpectedError } from '../_lib/error.js';
 import { disableResponseCache } from '../_lib/http.js';
 import { getRedis } from '../_lib/redis.js';
 import {
-    addMissingUserSheetEntries,
     readUserSheetSnapshot,
     replaceUserSheet,
+    syncRosterUserSheetEntries,
     updateUserSheetEntry,
 } from '../_lib/user-sheet-store.js';
 
@@ -43,7 +43,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             );
             if (result.status === 'INVALID') {
                 return res.status(400).json({
-                    error: '최신 시트를 다시 불러온 뒤 중복되지 않은 올바른 배틀태그로 작성해 주세요.',
+                    error: 'Discord ID 형식과 중복 유저의 식별 정보, 배틀태그 형식을 확인해 주세요.',
                 });
             }
             if (result.status === 'CONFLICT') {
@@ -64,18 +64,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
 
         if (req.method === 'POST') {
-            const body = req.body as { entries?: unknown } | undefined;
-            const result = await addMissingUserSheetEntries(
+            const body = req.body as {
+                entries?: unknown;
+                sheetVersion?: unknown;
+            } | undefined;
+            const result = await syncRosterUserSheetEntries(
                 redis,
                 body?.entries,
+                body?.sheetVersion,
                 actorName,
             );
+            if (result.status === 'CONFLICT') {
+                return res.status(409).json({
+                    code: 'USER_SHEET_CONFLICT',
+                    error: '다른 관리자가 시트를 먼저 수정했습니다.',
+                    snapshot: await readUserSheetSnapshot(redis),
+                });
+            }
             if (result.status !== 'OK') {
-                return res.status(400).json({ error: '추가할 Discord 명단을 확인해 주세요.' });
+                return res.status(400).json({
+                    error: 'Discord ID, 기존 유저 연결, 배틀태그 중복 여부를 확인해 주세요.',
+                });
             }
             return res.status(200).json({
                 ...result.snapshot,
                 addedCount: result.addedCount ?? 0,
+                tierUpdatedCount: result.tierUpdatedCount ?? 0,
+                updatedCount: result.updatedCount ?? 0,
             });
         }
 
@@ -92,7 +107,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             );
             if (result.status === 'INVALID') {
                 return res.status(400).json({
-                    error: '배틀태그에 #과 숫자 태그를 포함해 주세요. 예: Player#1234',
+                    error: 'Discord ID 형식과 배틀태그를 확인해 주세요. 예: Player#1234',
                 });
             }
             if (result.status === 'NOT_FOUND') {
@@ -104,6 +119,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 return res.status(409).json({
                     code: 'DUPLICATE_BATTLE_TAG',
                     error: '같은 배틀태그가 이미 등록되어 있습니다.',
+                });
+            }
+            if (result.status === 'DUPLICATE_DISCORD_ID') {
+                return res.status(409).json({
+                    code: 'DUPLICATE_DISCORD_USER_ID',
+                    error: '같은 Discord ID가 이미 등록되어 있습니다.',
                 });
             }
             if (result.status === 'CONFLICT') {

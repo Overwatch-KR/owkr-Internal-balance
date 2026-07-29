@@ -3,12 +3,14 @@ import { describe, expect, it, vi } from 'vitest';
 import {
     getUserSheetBattleTagHistory,
     replaceUserSheet,
+    syncRosterUserSheetEntries,
     updateUserSheetEntry,
     type StoredUserSheetEntry,
 } from './user-sheet-store';
 
 const storedEntry: StoredUserSheetEntry = {
     id: 'sheet-1',
+    discordUserId: '11111111111111111',
     discordName: '유저',
     battleTag: 'Player#1234',
     tank: '다3',
@@ -86,6 +88,151 @@ describe('user sheet atomic store', () => {
             'Legacy#1111',
             'Player#1234',
             'Renamed#9999',
+        ]);
+    });
+
+    it('명단 동기화에서 이름과 배틀태그를 갱신해도 특이사항은 보존한다', async () => {
+        const redis = createRedis();
+        vi.mocked(redis.eval)
+            .mockResolvedValueOnce(0)
+            .mockResolvedValueOnce({
+                entries: [storedEntry],
+                sheetVersion: 4,
+            })
+            .mockResolvedValueOnce({ status: 'OK' })
+            .mockResolvedValueOnce(0)
+            .mockResolvedValueOnce({
+                entries: [{
+                    ...storedEntry,
+                    discordName: '새 이름',
+                    battleTag: 'Renamed#9999',
+                    tank: '마1',
+                }],
+                sheetVersion: 5,
+            });
+
+        const result = await syncRosterUserSheetEntries(
+            redis,
+            [{
+                entryId: storedEntry.id,
+                discordUserId: storedEntry.discordUserId,
+                discordName: '새 이름',
+                battleTag: 'Renamed#9999',
+                tank: '마1',
+                dps: '다2',
+                support: '다3',
+                syncTiers: true,
+            }],
+            4,
+            '관리자 B',
+        );
+
+        expect(result).toMatchObject({
+            status: 'OK',
+            addedCount: 0,
+            tierUpdatedCount: 1,
+            updatedCount: 1,
+        });
+        const savedEntries = JSON.parse(
+            String(vi.mocked(redis.eval).mock.calls[2]?.[2]?.[1]),
+        ) as StoredUserSheetEntry[];
+        expect(savedEntries[0]).toMatchObject({
+            id: storedEntry.id,
+            discordName: '새 이름',
+            battleTag: 'Renamed#9999',
+            tank: '마1',
+            dps: '다2',
+            support: '다3',
+            note: '공유 메모',
+        });
+    });
+
+    it('티어 동기화를 끈 기존 유저는 프로필만 바꾸고 기존 티어를 유지한다', async () => {
+        const redis = createRedis();
+        vi.mocked(redis.eval)
+            .mockResolvedValueOnce(0)
+            .mockResolvedValueOnce({
+                entries: [storedEntry],
+                sheetVersion: 4,
+            })
+            .mockResolvedValueOnce({ status: 'OK' })
+            .mockResolvedValueOnce(0)
+            .mockResolvedValueOnce({
+                entries: [{ ...storedEntry, discordName: '새 이름' }],
+                sheetVersion: 5,
+            });
+
+        const result = await syncRosterUserSheetEntries(
+            redis,
+            [{
+                entryId: storedEntry.id,
+                discordUserId: storedEntry.discordUserId,
+                discordName: '새 이름',
+                battleTag: storedEntry.battleTag,
+                tank: '브5',
+                dps: '브5',
+                support: '브5',
+                syncTiers: false,
+            }],
+            4,
+            '관리자 B',
+        );
+
+        expect(result).toMatchObject({ status: 'OK', tierUpdatedCount: 0, updatedCount: 1 });
+        const savedEntries = JSON.parse(
+            String(vi.mocked(redis.eval).mock.calls[2]?.[2]?.[1]),
+        ) as StoredUserSheetEntry[];
+        expect(savedEntries[0]).toMatchObject({
+            discordName: '새 이름',
+            tank: storedEntry.tank,
+            dps: storedEntry.dps,
+            support: storedEntry.support,
+        });
+    });
+
+    it('서로 다른 Discord ID가 있으면 같은 배틀태그의 신규 유저도 함께 저장한다', async () => {
+        const redis = createRedis();
+        vi.mocked(redis.eval)
+            .mockResolvedValueOnce(0)
+            .mockResolvedValueOnce({ entries: [], sheetVersion: 0 })
+            .mockResolvedValueOnce({ status: 'OK' })
+            .mockResolvedValueOnce(0)
+            .mockResolvedValueOnce({ entries: [], sheetVersion: 1 });
+
+        const result = await syncRosterUserSheetEntries(
+            redis,
+            [
+                {
+                    discordUserId: '22222222222222222',
+                    discordName: '첫 번째',
+                    battleTag: 'Same#1234',
+                    tank: '골1',
+                    dps: '골1',
+                    support: '골1',
+                    syncTiers: true,
+                },
+                {
+                    discordUserId: '33333333333333333',
+                    discordName: '두 번째',
+                    battleTag: 'Same#1234',
+                    tank: '플1',
+                    dps: '플1',
+                    support: '플1',
+                    syncTiers: true,
+                },
+            ],
+            0,
+            '관리자 B',
+        );
+
+        expect(result).toMatchObject({ status: 'OK', addedCount: 2 });
+        const savedEntries = JSON.parse(
+            String(vi.mocked(redis.eval).mock.calls[2]?.[2]?.[1]),
+        ) as StoredUserSheetEntry[];
+        expect(savedEntries).toHaveLength(2);
+        expect(savedEntries.map(entry => entry.discordUserId)).toEqual([
+            '22222222222222222',
+            '33333333333333333',
         ]);
     });
 });

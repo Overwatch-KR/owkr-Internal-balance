@@ -334,19 +334,29 @@ export const updateUserSheetEntry = async (
     });
 };
 
-export interface AddMissingUserSheetPlayersResult extends UserSheetSnapshot {
+export interface SyncRosterUserSheetResult extends UserSheetSnapshot {
     addedCount: number;
+    tierUpdatedCount: number;
+    updatedCount: number;
 }
 
 /**
- * @description Discord 명단에서 정상 파싱된 유저 중 시트에 없는 배틀태그만 추가한다.
+ * @description 식별 검토가 끝난 Discord 명단의 프로필과 선택된 티어를 한 번에 동기화한다.
  */
-export const addMissingPlayersToUserSheet = async (
+export const syncRosterPlayersToUserSheet = async (
     players: Player[],
+    syncTierPlayerIds: ReadonlySet<number>,
+    sheetVersion: number,
     csrfToken: string,
-): Promise<AddMissingUserSheetPlayersResult> => {
+): Promise<SyncRosterUserSheetResult> => {
     if (IS_LOCAL_REVIEW_MODE) {
         const current = readLocalUserSheet();
+        if (current.sheetVersion !== sheetVersion) {
+            throw new ApiError('로컬 유저 시트가 먼저 변경되었습니다.', 409, {
+                code: 'USER_SHEET_CONFLICT',
+                body: { snapshot: current },
+            });
+        }
         const entries = [...current.entries];
         const entryIndexById = new Map(entries.map((entry, index) => [entry.id, index]));
         const entryIndexByDiscordId = new Map(
@@ -363,6 +373,8 @@ export const addMissingPlayersToUserSheet = async (
         });
         const now = Date.now();
         let addedCount = 0;
+        let tierUpdatedCount = 0;
+        let updatedCount = 0;
 
         for (const [playerIndex, player] of players.entries()) {
             const discordUserId = normalizeDiscordUserId(player.discordUserId);
@@ -384,22 +396,41 @@ export const addMissingPlayersToUserSheet = async (
 
             if (existingIndex !== undefined) {
                 const previous = entries[existingIndex];
-                const nextDiscordName = player.discordName?.trim() || previous.discordName;
-                const nextBattleTag = player.name.trim() || previous.battleTag;
+                const shouldSyncTiers = syncTierPlayerIds.has(player.id);
+                const nextDiscordName = player.discordName?.trim() ?? '';
+                const nextBattleTag = player.name.trim();
+                const nextTank = shouldSyncTiers
+                    ? cleanUserSheetRank(formatRank(player.tank))
+                    : previous.tank;
+                const nextDps = shouldSyncTiers
+                    ? cleanUserSheetRank(formatRank(player.dps))
+                    : previous.dps;
+                const nextSupport = shouldSyncTiers
+                    ? cleanUserSheetRank(formatRank(player.sup))
+                    : previous.support;
+                const didTierChange = previous.tank !== nextTank
+                    || previous.dps !== nextDps
+                    || previous.support !== nextSupport;
                 const didChange = previous.discordUserId !== (discordUserId || previous.discordUserId)
                     || previous.discordName !== nextDiscordName
-                    || previous.battleTag !== nextBattleTag;
+                    || previous.battleTag !== nextBattleTag
+                    || didTierChange;
                 entries[existingIndex] = {
                     ...previous,
                     discordUserId: discordUserId || previous.discordUserId,
                     discordName: nextDiscordName,
                     battleTag: nextBattleTag,
+                    tank: nextTank,
+                    dps: nextDps,
+                    support: nextSupport,
                     updatedAt: didChange ? now : previous.updatedAt,
                     updatedByName: didChange
                         ? LOCAL_REVIEW_USER_NAME
                         : previous.updatedByName,
                 };
                 if (discordUserId) entryIndexByDiscordId.set(discordUserId, existingIndex);
+                if (didChange) updatedCount += 1;
+                if (shouldSyncTiers && didTierChange) tierUpdatedCount += 1;
                 continue;
             }
 
@@ -426,28 +457,41 @@ export const addMissingPlayersToUserSheet = async (
             addedCount += 1;
         }
 
+        if (addedCount === 0 && updatedCount === 0) {
+            return {
+                ...current,
+                addedCount,
+                tierUpdatedCount,
+                updatedCount,
+            };
+        }
         return {
             ...writeLocalUserSheet(entries, current.sheetVersion),
             addedCount,
+            tierUpdatedCount,
+            updatedCount,
         };
     }
 
     const entries = players.map(player => ({
+        entryId: player.userSheetEntryId,
+        clientPlayerId: player.id,
+        discordUserId: normalizeDiscordUserId(player.discordUserId) || undefined,
         discordName: player.discordName?.trim() ?? '',
         battleTag: player.name.trim(),
         tank: cleanUserSheetRank(formatRank(player.tank)),
         dps: cleanUserSheetRank(formatRank(player.dps)),
         support: cleanUserSheetRank(formatRank(player.sup)),
-        note: '',
+        syncTiers: syncTierPlayerIds.has(player.id),
     }));
-    return requestJson<AddMissingUserSheetPlayersResult>('/api/user-sheet', {
+    return requestJson<SyncRosterUserSheetResult>('/api/user-sheet', {
         method: 'POST',
         credentials: 'same-origin',
         headers: {
             'Content-Type': 'application/json',
             'X-CSRF-Token': csrfToken,
         },
-        body: JSON.stringify({ entries }),
+        body: JSON.stringify({ entries, sheetVersion }),
     });
 };
 
