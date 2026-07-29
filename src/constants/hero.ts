@@ -1,0 +1,13 @@
+export type HeroRole = 'tank' | 'damage' | 'support';
+
+export interface Hero {
+    id: string;
+    name: string;
+    role: HeroRole;
+}
+
+export const HEROES: Hero[] = [
+    { id: 'shion', name: '시온', role: 'damage' }, { id: 'genji', name: '겐지', role: 'damage' }, { id: 'reaper', name: '리퍼', role: 'damage' }, { id: 'mei', name: '메이', role: 'damage' }, { id: 'bastion', name: '바스티온', role: 'damage' }, { id: 'vendetta', name: '벤데타', role: 'damage' }, { id: 'venture', name: '벤처', role: 'damage' }, { id: 'sojourn', name: '소전', role: 'damage' }, { id: 'soldier-76', name: '솔저: 76', role: 'damage' }, { id: 'sombra', name: '솜브라', role: 'damage' }, { id: 'symmetra', name: '시메트라', role: 'damage' }, { id: 'sierra', name: '시에라', role: 'damage' }, { id: 'anran', name: '안란', role: 'damage' }, { id: 'ashe', name: '애쉬', role: 'damage' }, { id: 'echo', name: '에코', role: 'damage' }, { id: 'emre', name: '엠레', role: 'damage' }, { id: 'widowmaker', name: '위도우메이커', role: 'damage' }, { id: 'junkrat', name: '정크랫', role: 'damage' }, { id: 'cassidy', name: '캐서디', role: 'damage' }, { id: 'torbjorn', name: '토르비욘', role: 'damage' }, { id: 'tracer', name: '트레이서', role: 'damage' }, { id: 'pharah', name: '파라', role: 'damage' }, { id: 'freja', name: '프레야', role: 'damage' }, { id: 'hanzo', name: '한조', role: 'damage' },
+    { id: 'lifeweaver', name: '라이프위버', role: 'support' }, { id: 'lucio', name: '루시우', role: 'support' }, { id: 'mercy', name: '메르시', role: 'support' }, { id: 'moira', name: '모이라', role: 'support' }, { id: 'mizuki', name: '미즈키', role: 'support' }, { id: 'baptiste', name: '바티스트', role: 'support' }, { id: 'brigitte', name: '브리기테', role: 'support' }, { id: 'ana', name: '아나', role: 'support' }, { id: 'wuyang', name: '우양', role: 'support' }, { id: 'illari', name: '일리아리', role: 'support' }, { id: 'jetpack-cat', name: '제트팩 캣', role: 'support' }, { id: 'zenyatta', name: '젠야타', role: 'support' }, { id: 'juno', name: '주노', role: 'support' }, { id: 'kiriko', name: '키리코', role: 'support' },
+    { id: 'dva', name: 'D.Va', role: 'tank' }, { id: 'domina', name: '도미나', role: 'tank' }, { id: 'doomfist', name: '둠피스트', role: 'tank' }, { id: 'ramattra', name: '라마트라', role: 'tank' }, { id: 'reinhardt', name: '라인하르트', role: 'tank' }, { id: 'wrecking-ball', name: '레킹볼', role: 'tank' }, { id: 'roadhog', name: '로드호그', role: 'tank' }, { id: 'mauga', name: '마우가', role: 'tank' }, { id: 'sigma', name: '시그마', role: 'tank' }, { id: 'orisa', name: '오리사', role: 'tank' }, { id: 'winston', name: '윈스턴', role: 'tank' }, { id: 'zarya', name: '자리야', role: 'tank' }, { id: 'junker-queen', name: '정커퀸', role: 'tank' }, { id: 'hazard', name: '해저드', role: 'tank' },
+];
