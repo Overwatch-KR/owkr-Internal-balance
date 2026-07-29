@@ -48,7 +48,7 @@ export function UserSheetModalHeader({
                         </span>
                     </div>
                     <p className="mt-0.5 text-xs text-slate-500">
-                        배틀태그를 기준으로 유저 정보와 특이사항을 관리합니다.
+                        Discord ID를 기준으로 유저 정보와 특이사항을 관리합니다.
                     </p>
                 </div>
             </div>

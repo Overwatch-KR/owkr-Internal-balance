@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useMemo, useState } from 'react';
 import { AnimatePresence, MotionConfig } from 'framer-motion';
+import { IS_LOCAL_REVIEW_MODE } from './config/runtime';
 import { SAMPLE_ROSTER, getTierScore } from './constants';
 import {
     getEligibleRosterPlayers,
@@ -14,6 +15,7 @@ import {
 import { normalizePlayerRolePreferences } from './utils/role-preference';
 import {
     addMissingPlayersToUserSheet,
+    createUserSheetPlayerLookup,
     normalizeUserSheetBattleTag,
 } from './utils/user-sheet';
 import { useOnboardingGuide } from './hooks/use-onboarding-guide';
@@ -27,6 +29,7 @@ import { clearPlayerNoteCache } from './utils/player-note';
 import type { Player, Role, SwapSource } from './types';
 import type { RosterImportMode } from './utils/player';
 import PlayerForm from './components/player/form';
+import { RosterIdentityResolver } from './components/player/form/roster-identity-resolver';
 import PlayerList from './components/player/list';
 import { OnboardingGuide } from './components/onboarding-guide';
 import { GuideResumePrompt } from './components/guide-resume-prompt';
@@ -50,6 +53,11 @@ interface MatchAppProps {
     csrfToken: string;
     logout: () => Promise<void>;
     user: AuthUser;
+}
+
+interface PendingIdentityImport {
+    failedLines: string[];
+    incoming: Player[];
 }
 
 const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
@@ -94,6 +102,7 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
     const [isLoggingOut, setIsLoggingOut] = useState(false);
     const [errorDetails, setErrorDetails] = useState<ErrorDetails | null>(null);
     const [manualInputError, setManualInputError] = useState('');
+    const [pendingIdentityImport, setPendingIdentityImport] = useState<PendingIdentityImport | null>(null);
     const userSheet = useUserSheet();
     const { dismissToast, showToast, toast } = useToast();
     const resetPlayerInputs = useCallback(() => {
@@ -152,6 +161,8 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
             id: editingPlayerId ?? Date.now(),
             name: inputs.name.trim(),
             discordName: inputs.discordName.trim() || undefined,
+            discordUserId: existingPlayer?.discordUserId,
+            userSheetEntryId: existingPlayer?.userSheetEntryId,
             tank: { tier: tTier, div: inputs.tDiv, score: getTierScore(tTier, inputs.tDiv), isPreferred: inputs.tPref, isAvoided: inputs.tAvoid },
             dps: { tier: dTier, div: inputs.dDiv, score: getTierScore(dTier, inputs.dDiv), isPreferred: inputs.dPref, isAvoided: inputs.dAvoid },
             sup: { tier: sTier, div: inputs.sDiv, score: getTierScore(sTier, inputs.sDiv), isPreferred: inputs.sPref, isAvoided: inputs.sAvoid },
@@ -276,6 +287,28 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
         );
     };
 
+    const continueRosterImport = (
+        incoming: Player[],
+        failedLines: string[],
+    ) => {
+        if (players.length === 0 && failedLines.length === 0) {
+            void commitRosterImport(incoming, failedLines, 'replace');
+            return;
+        }
+
+        setPendingRosterImport({ incoming, failedLines });
+        setIsInputCollapsed(false);
+    };
+
+    const requestRosterIdentityReview = (
+        incoming: Player[],
+        failedLines: string[],
+    ) => {
+        setPendingRosterImport(null);
+        setPendingIdentityImport({ incoming, failedLines });
+        setIsInputCollapsed(false);
+    };
+
     const handlePaste = () => {
         if (!pasteText.trim()) {
             showDetailedError('붙여넣을 디스코드 채팅이 없습니다.', {
@@ -311,16 +344,12 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
             return;
         }
 
-        if (players.length === 0 && failedLines.length === 0) {
-            void commitRosterImport(parsedPlayers, failedLines, 'replace');
+        if (IS_LOCAL_REVIEW_MODE) {
+            requestRosterIdentityReview(parsedPlayers, failedLines);
             return;
         }
 
-        setPendingRosterImport({
-            incoming: parsedPlayers,
-            failedLines,
-        });
-        setIsInputCollapsed(false);
+        continueRosterImport(parsedPlayers, failedLines);
     };
 
     const handleRunMatching = async (): Promise<boolean> => {
@@ -468,7 +497,11 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
             return;
         }
 
-        commitRosterImport(examplePlayers, [], 'replace');
+        if (IS_LOCAL_REVIEW_MODE) {
+            requestRosterIdentityReview(examplePlayers, []);
+            return;
+        }
+        void commitRosterImport(examplePlayers, [], 'replace');
     };
 
     const handleSelectAlternative = (idx: number) => {
@@ -533,9 +566,10 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
     const rosterImportPreview = pendingRosterImport
         ? reconcilePlayers(players, eligiblePendingPlayers, 'replace')
         : null;
-    const userSheetByBattleTag = useMemo(() => new Map(
-        userSheet.entries.map(entry => [normalizeUserSheetBattleTag(entry.battleTag), entry]),
-    ), [userSheet.entries]);
+    const userSheetByBattleTag = useMemo(
+        () => createUserSheetPlayerLookup(userSheet.entries),
+        [userSheet.entries],
+    );
     const participantBattleTags = useMemo(() => new Set(
         players.slice(0, 10).map(player => normalizeUserSheetBattleTag(player.name)),
     ), [players]);
@@ -635,8 +669,8 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
                             csrfToken={csrfToken}
                             noteCacheScope={user.id}
                             userSheetByBattleTag={userSheetByBattleTag}
-                            onOpenUserSheet={(battleTag) => {
-                                userSheet.open(battleTag);
+                            onOpenUserSheet={(battleTag, entryId) => {
+                                userSheet.open(battleTag, entryId);
                             }}
                         />
                     </div>
@@ -670,11 +704,12 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
                         )}
                     >
                         <UserSheetModal
-                            key={userSheet.selectedBattleTag ?? 'all-users'}
+                            key={userSheet.selectedEntryId ?? userSheet.selectedBattleTag ?? 'all-users'}
                             csrfToken={csrfToken}
                             entries={userSheet.entries}
                             error={userSheet.error}
                             initialBattleTag={userSheet.selectedBattleTag}
+                            initialEntryId={userSheet.selectedEntryId}
                             isLoading={userSheet.isLoading}
                             noteCacheScope={user.id}
                             participantBattleTags={participantBattleTags}
@@ -695,6 +730,20 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
                             onClose={userSheet.close}
                         />
                     </Suspense>
+                )}
+            </AnimatePresence>
+            <AnimatePresence>
+                {pendingIdentityImport && (
+                    <RosterIdentityResolver
+                        entries={userSheet.entries}
+                        players={pendingIdentityImport.incoming}
+                        onCancel={() => setPendingIdentityImport(null)}
+                        onConfirm={(identifiedPlayers) => {
+                            const failedLines = pendingIdentityImport.failedLines;
+                            setPendingIdentityImport(null);
+                            continueRosterImport(identifiedPlayers, failedLines);
+                        }}
+                    />
                 )}
             </AnimatePresence>
             <AnimatePresence>

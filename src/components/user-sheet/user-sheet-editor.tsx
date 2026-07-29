@@ -51,6 +51,7 @@ interface UserSheetEditorConflict {
 
 const FIELDS: readonly UserSheetEditorField[] = [
     'discordName',
+    'discordUserId',
     'battleTag',
     'tank',
     'dps',
@@ -60,6 +61,7 @@ const FIELDS: readonly UserSheetEditorField[] = [
 
 const makeEmptyEntry = (): UserSheetDraftEntry => ({
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    discordUserId: '',
     discordName: '',
     battleTag: '',
     tank: '',
@@ -125,7 +127,9 @@ export function UserSheetEditor({
     const updateCell = (rowId: string, field: UserSheetEditorField, value: string) => {
         const nextValue = field === 'tank' || field === 'dps' || field === 'support'
             ? cleanUserSheetRank(value)
-            : value;
+            : field === 'discordUserId'
+                ? value.replace(/\D/g, '')
+                : value;
         setIsClearConfirming(false);
         setMessage('');
         setRows(current => current.map(row => row.id === rowId ? { ...row, [field]: nextValue } : row));
@@ -149,7 +153,7 @@ export function UserSheetEditor({
                 const target = { ...next[startRowIndex + rowOffset] };
                 FIELDS.slice(startColumnIndex).forEach((field, fieldOffset) => {
                     const sourceField = FIELDS[fieldOffset];
-                    if (sourceField) target[field] = pasted[sourceField];
+                    if (sourceField) target[field] = pasted[sourceField] ?? '';
                 });
                 next[startRowIndex + rowOffset] = target;
             });
@@ -233,7 +237,7 @@ export function UserSheetEditor({
     const handleSave = async () => {
         setMessage('');
         if (validation.errors.size > 0) {
-            const validationMessage = `배틀태그 오류 ${validation.errors.size}개를 먼저 확인해 주세요.`;
+            const validationMessage = `입력 오류 ${validation.errors.size}개를 먼저 확인해 주세요.`;
             setMessage(validationMessage);
             onSaveError(validationMessage);
             return;
@@ -272,7 +276,7 @@ export function UserSheetEditor({
 
         const mergedValidation = validateUserSheetEntries(conflictMerge.rows);
         if (mergedValidation.errors.size > 0) {
-            const validationMessage = '병합 결과의 중복 또는 잘못된 배틀태그를 수정해 주세요.';
+            const validationMessage = '병합 결과의 Discord ID 또는 배틀태그 오류를 수정해 주세요.';
             setRows(conflictMerge.rows);
             baseRowsRef.current = conflict.latestSnapshot.entries.map(entry => ({ ...entry }));
             baseSheetVersionRef.current = conflict.latestSnapshot.sheetVersion;
@@ -327,7 +331,7 @@ export function UserSheetEditor({
                         </span>
                     </div>
                     <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                        Google Sheets의 6개 열을 첫 셀에 붙여넣거나 각 칸을 직접 수정하세요.
+                        Google Sheets의 7개 열을 첫 셀에 붙여넣거나 각 칸을 직접 수정하세요.
                     </p>
                     <p className="mt-1 inline-flex items-center gap-1.5 text-[11px] text-slate-600">
                         <Info size={12} className="shrink-0" aria-hidden="true" />
@@ -361,7 +365,7 @@ export function UserSheetEditor({
                         {validation.errors.size > 0 && (
                             <p>
                                 <strong className="font-semibold">{invalidRowNumbers.join(', ')}행</strong>의
-                                배틀태그를 확인해 주세요. 오류 칸을 붉은색으로 표시했습니다.
+                                입력값을 확인해 주세요. 오류 칸을 붉은색으로 표시했습니다.
                             </p>
                         )}
                         {message && <p>{message}</p>}

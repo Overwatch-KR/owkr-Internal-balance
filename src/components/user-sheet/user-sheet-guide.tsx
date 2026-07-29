@@ -15,12 +15,12 @@ interface UserSheetGuideProps {
 
 const GUIDE_ITEMS = [
     {
-        description: 'Discord 이름이 바뀌어도 같은 유저를 찾을 수 있도록 연결과 중복 판정은 BattleTag로 처리합니다.',
+        description: 'Discord 이름이나 BattleTag가 바뀌어도 같은 유저를 찾을 수 있도록 고유 ID를 최종 식별자로 사용합니다.',
         icon: KeyRound,
-        title: 'BattleTag가 기준이에요',
+        title: 'Discord ID가 기준이에요',
     },
     {
-        description: '한 명은 상세 화면의 바로 수정, 여러 명은 전체 편집을 사용하세요. 표의 6개 열을 그대로 붙여넣을 수도 있습니다.',
+        description: '한 명은 상세 화면의 바로 수정, 여러 명은 전체 편집을 사용하세요. 표의 7개 열을 그대로 붙여넣을 수도 있습니다.',
         icon: ClipboardPaste,
         title: '작업 범위에 맞게 편집해요',
     },
@@ -88,15 +88,15 @@ export function UserSheetGuide({ onClose, onStartTour }: UserSheetGuideProps) {
                     <article className="rounded-xl border border-violet-500/20 bg-violet-500/[0.05] p-4">
                         <h3 className="text-sm font-semibold text-violet-100">표 데이터 붙여넣기</h3>
                         <p className="mt-1.5 text-xs leading-relaxed text-slate-400">
-                            Google Sheets에서 아래 순서의 6개 열을 복사해 전체 편집에 붙여넣을 수 있습니다.
+                            Google Sheets에서 아래 순서의 7개 열을 복사해 전체 편집에 붙여넣을 수 있습니다.
                         </p>
                         <div className="mt-3 overflow-x-auto rounded-lg border border-slate-800 bg-slate-950/60 px-3 py-2.5">
                             <code className="whitespace-nowrap text-[11px] text-violet-200">
-                                디스코드 표시명 · BattleTag · 탱커 · 딜러 · 힐러 · 특이사항
+                                디스코드 표시명 · Discord ID · BattleTag · 탱커 · 딜러 · 힐러 · 특이사항
                             </code>
                         </div>
                         <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
-                            Discord 명단 가져오기는 신규 BattleTag를 추가하고 기존 유저의 티어만 갱신합니다. 기존 특이사항은 유지됩니다.
+                            기존 6열 데이터도 계속 붙여넣을 수 있으며 Discord ID 칸은 비워 둡니다.
                         </p>
                     </article>
 

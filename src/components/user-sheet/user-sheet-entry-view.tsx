@@ -14,6 +14,7 @@ import {
     type UserSheetMergeResolutions,
 } from '../../utils/user-sheet-merge';
 import { getErrorMessage } from '../../utils/api';
+import { cleanDiscordUserId, isValidDiscordUserId } from '../../utils/player-identity';
 import { UserSheetConflictResolver } from './user-sheet-conflict-resolver';
 import {
     UserSheetEntryContent,
@@ -96,13 +97,23 @@ export function UserSheetEntryView({
         nextDraft: UserSheetDraftEntry,
         latestEntries: UserSheetEntry[] = entries,
     ): string => {
+        const discordUserId = cleanDiscordUserId(nextDraft.discordUserId ?? '');
+        if (discordUserId && !isValidDiscordUserId(discordUserId)) {
+            return 'Discord ID는 17~20자리 숫자로 입력해 주세요.';
+        }
+        if (discordUserId && latestEntries.some(current => (
+            current.id !== entry.id
+            && current.discordUserId === discordUserId
+        ))) {
+            return '같은 Discord ID가 다른 유저에게 이미 등록되어 있습니다.';
+        }
         const rows = latestEntries.map(current => (
             current.id === entry.id ? nextDraft : current
         ));
         const error = validateUserSheetEntries(rows).errors.get(nextDraft.id);
         if (error) {
             return error === 'DUPLICATE_BATTLE_TAG'
-                ? '같은 배틀태그가 이미 등록되어 있습니다.'
+                ? '같은 배틀태그를 구분하려면 각 유저의 Discord ID가 필요합니다.'
                 : '배틀태그에 #과 숫자 태그를 포함해 주세요. 예: Player#1234';
         }
         return '';

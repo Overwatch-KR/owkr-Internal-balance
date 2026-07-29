@@ -54,7 +54,7 @@ const USER_SHEET_TOUR_STEPS: readonly UserSheetTourStep[] = [
         icon: KeyRound,
         target: '#user-sheet-overview',
         title: '시트의 역할부터 확인해요',
-        description: '유저 시트는 운영진이 함께 관리하는 공유 목록입니다. 연결과 중복 판정은 Discord 이름이 아닌 BattleTag를 기준으로 하고, 역할별 티어는 참고 정보로 사용합니다.',
+        description: '유저 시트는 운영진이 함께 관리하는 공유 목록입니다. Discord ID를 최종 식별자로 사용하고, 역할별 티어는 참고 정보로 사용합니다.',
     },
     {
         id: 'search',
@@ -87,7 +87,7 @@ const USER_SHEET_TOUR_STEPS: readonly UserSheetTourStep[] = [
         target: '#user-sheet-import',
         fallback: '#user-sheet-editor',
         title: '명단과 표를 한 번에 반영해요',
-        description: 'Discord 명단 가져오기로 신규 BattleTag를 추가하고 기존 티어를 갱신하거나, Google Sheets의 6개 열을 편집 표 첫 셀에 붙여넣을 수 있습니다. 이 가이드는 저장을 실행하지 않습니다.',
+        description: 'Discord 명단 가져오기로 신규 유저를 추가하거나, Google Sheets의 7개 열을 편집 표 첫 셀에 붙여넣을 수 있습니다. 기존 6열 형식도 지원합니다. 이 가이드는 저장을 실행하지 않습니다.',
     },
     {
         id: 'notes',

@@ -4,6 +4,15 @@ const ROLES = ['TANK', 'DPS', 'SUPPORT'] as const;
 
 const normalizeBattleTag = (name: string): string => name.trim().toLowerCase();
 
+/**
+ * @description Discord ID와 시트 UUID가 있으면 배틀태그보다 우선하는 참가자 식별 키를 만든다.
+ */
+export const getPlayerIdentityKey = (player: Player): string => {
+    if (player.discordUserId?.trim()) return `discord:${player.discordUserId.trim()}`;
+    if (player.userSheetEntryId?.trim()) return `sheet:${player.userSheetEntryId.trim()}`;
+    return `battle-tag:${normalizeBattleTag(player.name)}`;
+};
+
 const getPlayerFingerprint = (player: Player): string => {
     const rankFingerprint = (rank: Player['tank']): string => [
         rank.tier,
@@ -14,6 +23,7 @@ const getPlayerFingerprint = (player: Player): string => {
     ].join(':');
 
     return [
+        getPlayerIdentityKey(player),
         normalizeBattleTag(player.name),
         player.discordName?.trim() ?? '',
         player.noMic ? 1 : 0,
@@ -34,15 +44,15 @@ export interface PlayerReconciliationResult {
 }
 
 /**
- * @description 중복 배틀태그를 제거하고 처음 등장한 참가자의 순서를 유지한다.
+ * @description Discord ID 또는 시트 UUID가 같을 때만 동일 참가자로 보고 처음 등장한 순서를 유지한다.
  */
-const dedupePlayersByBattleTag = (players: Player[]): Player[] => {
-    const seenBattleTags = new Set<string>();
+const dedupePlayersByIdentity = (players: Player[]): Player[] => {
+    const seenIdentities = new Set<string>();
 
     return players.filter((player) => {
-        const battleTag = normalizeBattleTag(player.name);
-        if (seenBattleTags.has(battleTag)) return false;
-        seenBattleTags.add(battleTag);
+        const identity = getPlayerIdentityKey(player);
+        if (seenIdentities.has(identity)) return false;
+        seenIdentities.add(identity);
         return true;
     });
 };
@@ -54,7 +64,21 @@ const resolveKnownPlayer = (existing: Player, incoming: Player): Player => ({
     ...incoming,
     id: existing.id,
     discordName: incoming.discordName?.trim() || existing.discordName?.trim() || undefined,
+    discordUserId: incoming.discordUserId ?? existing.discordUserId,
+    userSheetEntryId: incoming.userSheetEntryId ?? existing.userSheetEntryId,
 });
+
+const makePlayerIndexes = (players: Player[]) => {
+    const byIdentity = new Map(players.map(player => [getPlayerIdentityKey(player), player]));
+    const byBattleTag = new Map<string, Player[]>();
+    players.forEach(player => {
+        const battleTag = normalizeBattleTag(player.name);
+        const matches = byBattleTag.get(battleTag) ?? [];
+        matches.push(player);
+        byBattleTag.set(battleTag, matches);
+    });
+    return { byBattleTag, byIdentity };
+};
 
 /**
  * @description 붙여넣은 명단을 현재 명단과 비교해 교체 또는 추가 결과와 변경 요약을 만든다.
@@ -64,28 +88,32 @@ export const reconcilePlayers = (
     incoming: Player[],
     mode: RosterImportMode,
 ): PlayerReconciliationResult => {
-    const currentPlayers = dedupePlayersByBattleTag(existing);
-    const incomingPlayers = dedupePlayersByBattleTag(incoming);
-    const currentByBattleTag = new Map(
-        currentPlayers.map((player) => [normalizeBattleTag(player.name), player]),
-    );
-    const incomingBattleTags = new Set(
-        incomingPlayers.map((player) => normalizeBattleTag(player.name)),
-    );
+    const currentPlayers = dedupePlayersByIdentity(existing);
+    const incomingPlayers = dedupePlayersByIdentity(incoming);
+    const currentIndexes = makePlayerIndexes(currentPlayers);
 
     let addedCount = 0;
     let updatedCount = 0;
     let unchangedCount = 0;
+    const matchedExistingIds = new Set<number>();
+    const resolvedByExistingId = new Map<number, Player>();
 
     const resolvedIncoming = incomingPlayers.map((player) => {
-        const existingPlayer = currentByBattleTag.get(normalizeBattleTag(player.name));
+        const identityMatch = currentIndexes.byIdentity.get(getPlayerIdentityKey(player));
+        const battleTagMatches = currentIndexes.byBattleTag.get(
+            normalizeBattleTag(player.name),
+        ) ?? [];
+        const existingPlayer = identityMatch
+            ?? (battleTagMatches.length === 1 ? battleTagMatches[0] : undefined);
 
         if (!existingPlayer) {
             addedCount++;
             return player;
         }
 
+        matchedExistingIds.add(existingPlayer.id);
         const resolvedPlayer = resolveKnownPlayer(existingPlayer, player);
+        resolvedByExistingId.set(existingPlayer.id, resolvedPlayer);
         if (getPlayerFingerprint(existingPlayer) === getPlayerFingerprint(resolvedPlayer)) {
             unchangedCount++;
         } else {
@@ -96,9 +124,7 @@ export const reconcilePlayers = (
     });
 
     const removedCount = mode === 'replace'
-        ? currentPlayers.filter(
-            (player) => !incomingBattleTags.has(normalizeBattleTag(player.name)),
-        ).length
+        ? currentPlayers.filter(player => !matchedExistingIds.has(player.id)).length
         : 0;
 
     if (mode === 'replace') {
@@ -111,15 +137,12 @@ export const reconcilePlayers = (
         };
     }
 
-    const resolvedByBattleTag = new Map(
-        resolvedIncoming.map((player) => [normalizeBattleTag(player.name), player]),
-    );
     const appendedPlayers = currentPlayers.map((player) => (
-        resolvedByBattleTag.get(normalizeBattleTag(player.name)) ?? player
+        resolvedByExistingId.get(player.id) ?? player
     ));
 
     for (const player of resolvedIncoming) {
-        if (!currentByBattleTag.has(normalizeBattleTag(player.name))) {
+        if (![...resolvedByExistingId.values()].includes(player)) {
             appendedPlayers.push(player);
         }
     }
@@ -135,17 +158,24 @@ export const reconcilePlayers = (
 
 const syncAssignmentIdentities = (
     assignment: RoleAssignment,
-    playerByBattleTag: Map<string, Player>,
+    players: Player[],
 ): RoleAssignment => {
     const syncedAssignment = { ...assignment };
+    const indexes = makePlayerIndexes(players);
 
     for (const role of ROLES) {
         syncedAssignment[role] = assignment[role].map((player) => {
-            const currentPlayer = playerByBattleTag.get(normalizeBattleTag(player.name));
-            const discordName = currentPlayer?.discordName?.trim();
-            return discordName && discordName !== player.discordName?.trim()
-                ? { ...player, discordName }
-                : player;
+            const identityMatch = indexes.byIdentity.get(getPlayerIdentityKey(player));
+            const battleTagMatches = indexes.byBattleTag.get(normalizeBattleTag(player.name)) ?? [];
+            const currentPlayer = identityMatch
+                ?? (battleTagMatches.length === 1 ? battleTagMatches[0] : undefined);
+            if (!currentPlayer) return player;
+            return {
+                ...player,
+                discordName: currentPlayer.discordName?.trim() || player.discordName,
+                discordUserId: currentPlayer.discordUserId ?? player.discordUserId,
+                userSheetEntryId: currentPlayer.userSheetEntryId ?? player.userSheetEntryId,
+            };
         });
     }
 
@@ -159,19 +189,15 @@ export const syncMatchResultPlayerIdentities = (
     result: MatchResultData,
     players: Player[],
 ): MatchResultData => {
-    const playerByBattleTag = new Map(
-        players.map((player) => [normalizeBattleTag(player.name), player]),
-    );
-
     return {
         ...result,
         teamA: {
             ...result.teamA,
-            assignment: syncAssignmentIdentities(result.teamA.assignment, playerByBattleTag),
+            assignment: syncAssignmentIdentities(result.teamA.assignment, players),
         },
         teamB: {
             ...result.teamB,
-            assignment: syncAssignmentIdentities(result.teamB.assignment, playerByBattleTag),
+            assignment: syncAssignmentIdentities(result.teamB.assignment, players),
         },
     };
 };

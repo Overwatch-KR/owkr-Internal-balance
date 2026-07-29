@@ -55,6 +55,23 @@ describe('parseUserSheetRows', () => {
         });
     });
 
+    it('Discord ID가 포함된 Google Sheets 7열을 유저 행으로 변환한다', () => {
+        const rows = parseUserSheetRows([
+            '디스코드 이름\tDiscord ID\t배틀태그\t탱커\t딜러\t힐러\t특이사항',
+            '상민\t123456789012345678\tPlayer#1234\t다3\t플2\t마5\t마이크X',
+        ].join('\n'));
+
+        expect(rows[0]).toMatchObject({
+            discordName: '상민',
+            discordUserId: '123456789012345678',
+            battleTag: 'Player#1234',
+            tank: '다3',
+            dps: '플2',
+            support: '마5',
+            note: '마이크X',
+        });
+    });
+
     it('배틀태그 연결 시 대소문자와 바깥 공백을 무시한다', () => {
         expect(normalizeUserSheetBattleTag(' Player#1234 ')).toBe('player#1234');
     });
@@ -81,6 +98,7 @@ describe('mergeDiscordPlayersIntoUserSheet', () => {
         expect(result).toMatchObject({ addedCount: 1, updatedCount: 0 });
         expect(result.rows[0]).toEqual({
             id: 'blank',
+            discordUserId: '',
             discordName: '새유저',
             battleTag: 'New#1234',
             tank: '다3',
@@ -238,6 +256,53 @@ describe('user sheet conflict payloads', () => {
 });
 
 describe('validateUserSheetEntries', () => {
+    it('Discord ID 형식 오류와 중복을 별도로 표시한다', () => {
+        const base = {
+            discordName: '유저',
+            battleTag: 'Player#1234',
+            tank: '',
+            dps: '',
+            support: '',
+            note: '',
+        };
+        const result = validateUserSheetEntries([
+            { ...base, id: 'invalid', discordUserId: '1234' },
+            { ...base, id: 'duplicate-a', discordUserId: '11111111111111111' },
+            { ...base, id: 'duplicate-b', discordUserId: '11111111111111111' },
+        ]);
+
+        expect(result.errors.get('invalid')).toBe('INVALID_DISCORD_USER_ID');
+        expect(result.errors.get('duplicate-a')).toBe('DUPLICATE_DISCORD_USER_ID');
+        expect(result.errors.get('duplicate-b')).toBe('DUPLICATE_DISCORD_USER_ID');
+    });
+
+    it('중복 배틀태그라도 서로 다른 Discord ID가 있으면 구분 가능한 행으로 허용한다', () => {
+        const duplicateRows: UserSheetDraftEntry[] = [
+            {
+                id: 'first',
+                discordUserId: '11111111111111111',
+                discordName: '첫 번째',
+                battleTag: 'Same#1234',
+                tank: '골3',
+                dps: '골3',
+                support: '골3',
+                note: '',
+            },
+            {
+                id: 'second',
+                discordUserId: '22222222222222222',
+                discordName: '두 번째',
+                battleTag: 'Same#1234',
+                tank: '골3',
+                dps: '골3',
+                support: '골3',
+                note: '',
+            },
+        ];
+
+        expect(validateUserSheetEntries(duplicateRows).errors.size).toBe(0);
+    });
+
     const draft = (id: string, battleTag: string): UserSheetDraftEntry => ({
         id,
         discordName: '유저',

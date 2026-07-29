@@ -1,9 +1,11 @@
 import { formatRank } from '../constants';
+import { IS_LOCAL_REVIEW_MODE } from '../config/runtime';
 import type { Player } from '../types';
 import { ApiError, requestJson } from './api';
 
 export interface UserSheetEntry {
     id: string;
+    discordUserId?: string;
     discordName: string;
     battleTag: string;
     tank: string;
@@ -32,12 +34,17 @@ interface UserSheetConflictResponse {
 
 export type UserSheetDraftEntry = Pick<
     UserSheetEntry,
-    'id' | 'discordName' | 'battleTag' | 'tank' | 'dps' | 'support' | 'note'
+    'id' | 'discordUserId' | 'discordName' | 'battleTag' | 'tank' | 'dps' | 'support' | 'note'
 >;
 
-export type UserSheetValidationError = 'INVALID_BATTLE_TAG' | 'DUPLICATE_BATTLE_TAG';
+export type UserSheetValidationError =
+    | 'INVALID_BATTLE_TAG'
+    | 'DUPLICATE_BATTLE_TAG'
+    | 'INVALID_DISCORD_USER_ID'
+    | 'DUPLICATE_DISCORD_USER_ID';
 
 const USER_SHEET_DRAFT_FIELDS: ReadonlyArray<keyof UserSheetDraftEntry> = [
+    'discordUserId',
     'discordName',
     'battleTag',
     'tank',
@@ -46,8 +53,100 @@ const USER_SHEET_DRAFT_FIELDS: ReadonlyArray<keyof UserSheetDraftEntry> = [
     'note',
 ];
 
+const LOCAL_USER_SHEET_STORAGE_KEY = 'owkr_local_review_user_sheet_v3';
+const LEGACY_LOCAL_USER_SHEET_STORAGE_KEY = 'owkr_local_review_user_sheet';
+const LOCAL_REVIEW_USER_NAME = '로컬 검수';
+
+const normalizeDiscordUserId = (value: string | undefined): string => (
+    value?.replace(/\D/g, '').trim() ?? ''
+);
+
+const normalizeLocalEntry = (
+    entry: Partial<UserSheetEntry>,
+    index: number,
+): UserSheetEntry | null => {
+    if (
+        typeof entry.discordName !== 'string'
+        || typeof entry.battleTag !== 'string'
+        || typeof entry.tank !== 'string'
+        || typeof entry.dps !== 'string'
+        || typeof entry.support !== 'string'
+        || typeof entry.note !== 'string'
+    ) {
+        return null;
+    }
+    const now = Date.now();
+    return {
+        id: typeof entry.id === 'string' && entry.id
+            ? entry.id
+            : `local-sheet-${now}-${index}`,
+        discordUserId: normalizeDiscordUserId(entry.discordUserId) || undefined,
+        discordName: entry.discordName,
+        battleTag: entry.battleTag,
+        tank: entry.tank,
+        dps: entry.dps,
+        support: entry.support,
+        note: entry.note,
+        createdAt: typeof entry.createdAt === 'number' ? entry.createdAt : now,
+        updatedAt: typeof entry.updatedAt === 'number' ? entry.updatedAt : now,
+        updatedByName: typeof entry.updatedByName === 'string'
+            ? entry.updatedByName
+            : LOCAL_REVIEW_USER_NAME,
+    };
+};
+
+const readLocalUserSheet = (): UserSheetSnapshot => {
+    try {
+        const stored = localStorage.getItem(LOCAL_USER_SHEET_STORAGE_KEY);
+        if (stored) {
+            const parsed = JSON.parse(stored) as Partial<UserSheetSnapshot>;
+            return {
+                entries: Array.isArray(parsed.entries)
+                    ? parsed.entries
+                        .map((entry, index) => normalizeLocalEntry(
+                            entry as Partial<UserSheetEntry>,
+                            index,
+                        ))
+                        .filter((entry): entry is UserSheetEntry => Boolean(entry))
+                    : [],
+                sheetVersion: Number.isSafeInteger(parsed.sheetVersion)
+                    ? parsed.sheetVersion as number
+                    : 0,
+            };
+        }
+
+        const legacy = localStorage.getItem(LEGACY_LOCAL_USER_SHEET_STORAGE_KEY);
+        const legacyEntries = legacy ? JSON.parse(legacy) as unknown : [];
+        return {
+            entries: Array.isArray(legacyEntries)
+                ? legacyEntries
+                    .map((entry, index) => normalizeLocalEntry(
+                        entry as Partial<UserSheetEntry>,
+                        index,
+                    ))
+                    .filter((entry): entry is UserSheetEntry => Boolean(entry))
+                : [],
+            sheetVersion: 0,
+        };
+    } catch {
+        return { entries: [], sheetVersion: 0 };
+    }
+};
+
+const writeLocalUserSheet = (
+    entries: UserSheetEntry[],
+    previousVersion: number,
+): UserSheetSnapshot => {
+    const snapshot = {
+        entries,
+        sheetVersion: previousVersion + 1,
+    };
+    localStorage.setItem(LOCAL_USER_SHEET_STORAGE_KEY, JSON.stringify(snapshot));
+    return snapshot;
+};
+
 export const isActiveUserSheetEntry = (entry: UserSheetDraftEntry): boolean => (
-    USER_SHEET_DRAFT_FIELDS.some(field => entry[field].trim())
+    USER_SHEET_DRAFT_FIELDS.some(field => (entry[field] ?? '').trim())
 );
 
 /**
@@ -58,18 +157,41 @@ export const validateUserSheetEntries = (rows: UserSheetDraftEntry[]): {
     errors: Map<string, UserSheetValidationError>;
 } => {
     const activeRows = rows.filter(isActiveUserSheetEntry);
-    const counts = new Map<string, number>();
+    const rowsByBattleTag = new Map<string, UserSheetDraftEntry[]>();
+    const discordIdCounts = new Map<string, number>();
     for (const row of activeRows) {
+        const discordUserId = normalizeDiscordUserId(row.discordUserId);
+        if (discordUserId) {
+            discordIdCounts.set(
+                discordUserId,
+                (discordIdCounts.get(discordUserId) ?? 0) + 1,
+            );
+        }
         const key = normalizeUserSheetBattleTag(row.battleTag);
-        if (key) counts.set(key, (counts.get(key) ?? 0) + 1);
+        if (!key) continue;
+        const matches = rowsByBattleTag.get(key) ?? [];
+        matches.push(row);
+        rowsByBattleTag.set(key, matches);
     }
 
     const errors = new Map<string, UserSheetValidationError>();
     for (const row of activeRows) {
-        if (!row.battleTag.includes('#')) {
+        const discordUserId = normalizeDiscordUserId(row.discordUserId);
+        if (discordUserId && !/^\d{17,20}$/.test(discordUserId)) {
+            errors.set(row.id, 'INVALID_DISCORD_USER_ID');
+        } else if (discordUserId && (discordIdCounts.get(discordUserId) ?? 0) > 1) {
+            errors.set(row.id, 'DUPLICATE_DISCORD_USER_ID');
+        } else if (!row.battleTag.includes('#')) {
             errors.set(row.id, 'INVALID_BATTLE_TAG');
-        } else if ((counts.get(normalizeUserSheetBattleTag(row.battleTag)) ?? 0) > 1) {
-            errors.set(row.id, 'DUPLICATE_BATTLE_TAG');
+        } else {
+            const matches = rowsByBattleTag.get(
+                normalizeUserSheetBattleTag(row.battleTag),
+            ) ?? [];
+            if (matches.length <= 1) continue;
+            const discordIds = matches.map(match => normalizeDiscordUserId(match.discordUserId));
+            const hasDistinctDiscordIds = discordIds.every(Boolean)
+                && new Set(discordIds).size === matches.length;
+            if (!hasDistinctDiscordIds) errors.set(row.id, 'DUPLICATE_BATTLE_TAG');
         }
     }
 
@@ -87,6 +209,8 @@ export const cleanUserSheetRank = (value: string): string => (
  * @description 관리자들이 함께 사용하는 유저 정보 시트를 가져온다.
  */
 export const fetchUserSheet = async (): Promise<UserSheetSnapshot> => {
+    if (IS_LOCAL_REVIEW_MODE) return readLocalUserSheet();
+
     return requestJson<UserSheetSnapshot>('/api/user-sheet', {
         credentials: 'same-origin',
     });
@@ -139,6 +263,29 @@ export const saveUserSheet = async (
     sheetVersion: number,
     csrfToken: string,
 ): Promise<UserSheetSnapshot> => {
+    if (IS_LOCAL_REVIEW_MODE) {
+        const current = readLocalUserSheet();
+        const previousById = new Map(current.entries.map(entry => [entry.id, entry]));
+        const now = Date.now();
+        const savedEntries = entries.map((entry, index): UserSheetEntry => {
+            const previous = previousById.get(entry.id);
+            const didChange = !previous || USER_SHEET_DRAFT_FIELDS.some(
+                field => previous[field] !== entry[field],
+            ) || previous.discordUserId !== entry.discordUserId;
+            return {
+                ...entry,
+                id: entry.id || `local-sheet-${now}-${index}`,
+                discordUserId: normalizeDiscordUserId(entry.discordUserId) || undefined,
+                createdAt: previous?.createdAt ?? now,
+                updatedAt: didChange ? now : previous.updatedAt,
+                updatedByName: didChange
+                    ? LOCAL_REVIEW_USER_NAME
+                    : previous.updatedByName,
+            };
+        });
+        return writeLocalUserSheet(savedEntries, current.sheetVersion);
+    }
+
     return requestJson<UserSheetSnapshot>('/api/user-sheet', {
         method: 'PUT',
         credentials: 'same-origin',
@@ -158,6 +305,24 @@ export const updateUserSheetEntry = async (
     expectedUpdatedAt: number,
     csrfToken: string,
 ): Promise<UserSheetSnapshot> => {
+    if (IS_LOCAL_REVIEW_MODE) {
+        const current = readLocalUserSheet();
+        const targetIndex = current.entries.findIndex(item => item.id === entry.id);
+        const drafts: UserSheetDraftEntry[] = current.entries.map(item => ({
+            id: item.id,
+            discordUserId: item.discordUserId,
+            discordName: item.discordName,
+            battleTag: item.battleTag,
+            tank: item.tank,
+            dps: item.dps,
+            support: item.support,
+            note: item.note,
+        }));
+        if (targetIndex >= 0) drafts[targetIndex] = entry;
+        else drafts.push(entry);
+        return saveUserSheet(drafts, current.sheetVersion, csrfToken);
+    }
+
     return requestJson<UserSheetSnapshot>('/api/user-sheet', {
         method: 'PATCH',
         credentials: 'same-origin',
@@ -180,6 +345,93 @@ export const addMissingPlayersToUserSheet = async (
     players: Player[],
     csrfToken: string,
 ): Promise<AddMissingUserSheetPlayersResult> => {
+    if (IS_LOCAL_REVIEW_MODE) {
+        const current = readLocalUserSheet();
+        const entries = [...current.entries];
+        const entryIndexById = new Map(entries.map((entry, index) => [entry.id, index]));
+        const entryIndexByDiscordId = new Map(
+            entries.flatMap((entry, index) => (
+                entry.discordUserId ? [[entry.discordUserId, index] as const] : []
+            )),
+        );
+        const entryIndexesByBattleTag = new Map<string, number[]>();
+        entries.forEach((entry, index) => {
+            const key = normalizeUserSheetBattleTag(entry.battleTag);
+            const indexes = entryIndexesByBattleTag.get(key) ?? [];
+            indexes.push(index);
+            entryIndexesByBattleTag.set(key, indexes);
+        });
+        const now = Date.now();
+        let addedCount = 0;
+
+        for (const [playerIndex, player] of players.entries()) {
+            const discordUserId = normalizeDiscordUserId(player.discordUserId);
+            const battleTagKey = normalizeUserSheetBattleTag(player.name);
+            const uniqueBattleTagIndexes = entryIndexesByBattleTag.get(battleTagKey) ?? [];
+            const existingIndex = (
+                player.userSheetEntryId
+                    ? entryIndexById.get(player.userSheetEntryId)
+                    : undefined
+            ) ?? (
+                discordUserId
+                    ? entryIndexByDiscordId.get(discordUserId)
+                    : undefined
+            ) ?? (
+                uniqueBattleTagIndexes.length === 1
+                    ? uniqueBattleTagIndexes[0]
+                    : undefined
+            );
+
+            if (existingIndex !== undefined) {
+                const previous = entries[existingIndex];
+                const nextDiscordName = player.discordName?.trim() || previous.discordName;
+                const nextBattleTag = player.name.trim() || previous.battleTag;
+                const didChange = previous.discordUserId !== (discordUserId || previous.discordUserId)
+                    || previous.discordName !== nextDiscordName
+                    || previous.battleTag !== nextBattleTag;
+                entries[existingIndex] = {
+                    ...previous,
+                    discordUserId: discordUserId || previous.discordUserId,
+                    discordName: nextDiscordName,
+                    battleTag: nextBattleTag,
+                    updatedAt: didChange ? now : previous.updatedAt,
+                    updatedByName: didChange
+                        ? LOCAL_REVIEW_USER_NAME
+                        : previous.updatedByName,
+                };
+                if (discordUserId) entryIndexByDiscordId.set(discordUserId, existingIndex);
+                continue;
+            }
+
+            const newEntry: UserSheetEntry = {
+                id: player.userSheetEntryId || `local-sheet-${now}-${playerIndex}`,
+                discordUserId: discordUserId || undefined,
+                discordName: player.discordName?.trim() ?? '',
+                battleTag: player.name.trim(),
+                tank: cleanUserSheetRank(formatRank(player.tank)),
+                dps: cleanUserSheetRank(formatRank(player.dps)),
+                support: cleanUserSheetRank(formatRank(player.sup)),
+                note: '',
+                createdAt: now,
+                updatedAt: now,
+                updatedByName: LOCAL_REVIEW_USER_NAME,
+            };
+            entries.push(newEntry);
+            const newIndex = entries.length - 1;
+            entryIndexById.set(newEntry.id, newIndex);
+            if (discordUserId) entryIndexByDiscordId.set(discordUserId, newIndex);
+            const indexes = entryIndexesByBattleTag.get(battleTagKey) ?? [];
+            indexes.push(newIndex);
+            entryIndexesByBattleTag.set(battleTagKey, indexes);
+            addedCount += 1;
+        }
+
+        return {
+            ...writeLocalUserSheet(entries, current.sheetVersion),
+            addedCount,
+        };
+    }
+
     const entries = players.map(player => ({
         discordName: player.discordName?.trim() ?? '',
         battleTag: player.name.trim(),
@@ -200,18 +452,45 @@ export const addMissingPlayersToUserSheet = async (
 };
 
 /**
- * @description Google Sheets에서 복사한 6개 열을 유저 시트 행으로 변환한다.
+ * @description Google Sheets의 기존 6열 또는 Discord ID가 포함된 7열을 유저 시트 행으로 변환한다.
  */
 export const parseUserSheetRows = (text: string): UserSheetDraftEntry[] => {
     const lines = text.replace(/\r/g, '').split('\n').filter(line => line.trim());
     if (lines.length === 0) return [];
-    const headerAliases = ['디스코드', '배틀태그', '탱커', '딜러', '힐러', '특이사항'];
+    const headerAliases = ['디스코드', 'discord', '배틀태그', '탱커', '딜러', '힐러', '특이사항'];
     const firstCells = lines[0].split('\t').map(cell => cell.trim().toLowerCase());
     const hasHeader = firstCells.some(cell => headerAliases.some(alias => cell.includes(alias)));
+    const hasDiscordIdColumn = firstCells.some(cell => (
+        cell.includes('discord id')
+        || cell.includes('디스코드 id')
+        || cell.includes('고유 id')
+    )) || (
+        !hasHeader
+        && (
+            firstCells.length >= 7
+            || /^\d{17,20}$/.test(firstCells[1] ?? '')
+        )
+    );
     return lines.slice(hasHeader ? 1 : 0).map((line, index) => {
-        const [discordName = '', battleTag = '', tank = '', dps = '', support = '', note = ''] = line.split('\t');
+        const cells = line.split('\t');
+        const [
+            discordName = '',
+            secondCell = '',
+            thirdCell = '',
+            fourthCell = '',
+            fifthCell = '',
+            sixthCell = '',
+            seventhCell = '',
+        ] = cells;
+        const discordUserId = hasDiscordIdColumn ? secondCell : '';
+        const battleTag = hasDiscordIdColumn ? thirdCell : secondCell;
+        const tank = hasDiscordIdColumn ? fourthCell : thirdCell;
+        const dps = hasDiscordIdColumn ? fifthCell : fourthCell;
+        const support = hasDiscordIdColumn ? sixthCell : fifthCell;
+        const note = hasDiscordIdColumn ? seventhCell : sixthCell;
         return {
             id: `${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`,
+            discordUserId: normalizeDiscordUserId(discordUserId) || undefined,
             discordName: discordName.trim(),
             battleTag: battleTag.trim(),
             tank: cleanUserSheetRank(tank),
@@ -224,9 +503,39 @@ export const parseUserSheetRows = (text: string): UserSheetDraftEntry[] => {
 
 export const normalizeUserSheetBattleTag = (value: string): string => value.trim().toLowerCase();
 
+/**
+ * @description 참가자의 가장 안정적인 식별자로 유저 시트 조회 키를 만든다.
+ */
+export const getPlayerUserSheetLookupKey = (player: Player): string => {
+    if (player.userSheetEntryId?.trim()) return `entry:${player.userSheetEntryId.trim()}`;
+    if (player.discordUserId?.trim()) return `discord:${player.discordUserId.trim()}`;
+    return normalizeUserSheetBattleTag(player.name);
+};
+
+/**
+ * @description 시트 UUID·Discord ID를 우선하고 유일한 배틀태그만 보조 키로 등록한다.
+ */
+export const createUserSheetPlayerLookup = (
+    entries: UserSheetEntry[],
+): Map<string, UserSheetEntry> => {
+    const lookup = new Map<string, UserSheetEntry>();
+    const battleTagCounts = new Map<string, number>();
+    entries.forEach(entry => {
+        const battleTag = normalizeUserSheetBattleTag(entry.battleTag);
+        battleTagCounts.set(battleTag, (battleTagCounts.get(battleTag) ?? 0) + 1);
+    });
+    entries.forEach(entry => {
+        lookup.set(`entry:${entry.id}`, entry);
+        if (entry.discordUserId) lookup.set(`discord:${entry.discordUserId}`, entry);
+        const battleTag = normalizeUserSheetBattleTag(entry.battleTag);
+        if (battleTagCounts.get(battleTag) === 1) lookup.set(battleTag, entry);
+    });
+    return lookup;
+};
+
 const USER_SHEET_COMPARISON_FIELDS: ReadonlyArray<
-    keyof Pick<UserSheetDraftEntry, 'discordName' | 'battleTag' | 'tank' | 'dps' | 'support' | 'note'>
-> = ['discordName', 'battleTag', 'tank', 'dps', 'support', 'note'];
+    keyof Pick<UserSheetDraftEntry, 'discordUserId' | 'discordName' | 'battleTag' | 'tank' | 'dps' | 'support' | 'note'>
+> = ['discordUserId', 'discordName', 'battleTag', 'tank', 'dps', 'support', 'note'];
 
 /**
  * @description 저장 전후의 실제 추가·수정·삭제 건수를 계산한다.
@@ -235,26 +544,26 @@ export const getUserSheetChangeSummary = (
     previousEntries: UserSheetDraftEntry[],
     nextEntries: UserSheetDraftEntry[],
 ): UserSheetChangeSummary => {
-    const previousByBattleTag = new Map(
-        previousEntries.map(entry => [normalizeUserSheetBattleTag(entry.battleTag), entry]),
+    const previousById = new Map(
+        previousEntries.map(entry => [entry.id, entry]),
     );
-    const nextByBattleTag = new Map(
-        nextEntries.map(entry => [normalizeUserSheetBattleTag(entry.battleTag), entry]),
+    const nextById = new Map(
+        nextEntries.map(entry => [entry.id, entry]),
     );
     let addedCount = 0;
     let removedCount = 0;
     let updatedCount = 0;
 
-    for (const [battleTag, entry] of nextByBattleTag) {
-        const previous = previousByBattleTag.get(battleTag);
+    for (const [id, entry] of nextById) {
+        const previous = previousById.get(id);
         if (!previous) {
             addedCount += 1;
         } else if (USER_SHEET_COMPARISON_FIELDS.some(field => previous[field] !== entry[field])) {
             updatedCount += 1;
         }
     }
-    for (const battleTag of previousByBattleTag.keys()) {
-        if (!nextByBattleTag.has(battleTag)) removedCount += 1;
+    for (const id of previousById.keys()) {
+        if (!nextById.has(id)) removedCount += 1;
     }
 
     return { addedCount, removedCount, updatedCount };
@@ -285,7 +594,8 @@ export interface UserSheetMergeResult {
 }
 
 const isBlankDraftEntry = (entry: UserSheetDraftEntry): boolean => (
-    !entry.discordName.trim()
+    !(entry.discordUserId ?? '').trim()
+    && !entry.discordName.trim()
     && !entry.battleTag.trim()
     && !entry.tank.trim()
     && !entry.dps.trim()
@@ -340,6 +650,7 @@ export const mergeDiscordPlayersIntoUserSheet = (
             id: blankIndex >= 0
                 ? rows[blankIndex].id
                 : `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+            discordUserId: '',
             discordName: player.discordName?.trim() ?? '',
             ...nextValues,
             note: '',

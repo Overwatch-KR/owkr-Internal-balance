@@ -11,6 +11,7 @@ const USER_SHEET_REFRESH_INTERVAL_MS = 60_000;
 
 interface StoredUserSheetModalState {
     battleTag?: string;
+    entryId?: string;
     isOpen: boolean;
 }
 
@@ -22,6 +23,7 @@ const readStoredModalState = (): StoredUserSheetModalState => {
         return {
             isOpen: parsed.isOpen === true,
             battleTag: typeof parsed.battleTag === 'string' ? parsed.battleTag : undefined,
+            entryId: typeof parsed.entryId === 'string' ? parsed.entryId : undefined,
         };
     } catch {
         return { isOpen: false };
@@ -40,6 +42,9 @@ export const useUserSheet = () => {
     const [isOpen, setIsOpen] = useState(storedModalState.isOpen);
     const [selectedBattleTag, setSelectedBattleTag] = useState<string | undefined>(
         storedModalState.battleTag,
+    );
+    const [selectedEntryId, setSelectedEntryId] = useState<string | undefined>(
+        storedModalState.entryId,
     );
     const requestIdRef = useRef(0);
 
@@ -96,12 +101,14 @@ export const useUserSheet = () => {
         };
     }, [isOpen, revalidate]);
 
-    const open = useCallback((battleTag?: string) => {
+    const open = useCallback((battleTag?: string, entryId?: string) => {
         sessionStorage.setItem(USER_SHEET_SESSION_KEY, JSON.stringify({
             isOpen: true,
             battleTag,
+            entryId,
         } satisfies StoredUserSheetModalState));
         setSelectedBattleTag(battleTag);
+        setSelectedEntryId(entryId);
         setIsOpen(true);
     }, []);
 
@@ -109,6 +116,7 @@ export const useUserSheet = () => {
         sessionStorage.removeItem(USER_SHEET_SESSION_KEY);
         setIsOpen(false);
         setSelectedBattleTag(undefined);
+        setSelectedEntryId(undefined);
     }, []);
 
     const updateSnapshot = useCallback((snapshot: UserSheetSnapshot) => {
@@ -127,6 +135,7 @@ export const useUserSheet = () => {
         revalidate,
         retry,
         selectedBattleTag,
+        selectedEntryId,
         sheetVersion,
         updateSnapshot,
     };
