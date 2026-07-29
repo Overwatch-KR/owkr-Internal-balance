@@ -190,6 +190,42 @@ describe('user sheet atomic store', () => {
         });
     });
 
+    it('입력에 Discord 이름이 없으면 기존 시트 이름을 지우지 않는다', async () => {
+        const redis = createRedis();
+        vi.mocked(redis.eval)
+            .mockResolvedValueOnce(0)
+            .mockResolvedValueOnce({
+                entries: [storedEntry],
+                sheetVersion: 4,
+            });
+
+        const result = await syncRosterUserSheetEntries(
+            redis,
+            [{
+                entryId: storedEntry.id,
+                discordUserId: storedEntry.discordUserId,
+                discordName: '',
+                battleTag: storedEntry.battleTag,
+                tank: '브5',
+                dps: '브5',
+                support: '브5',
+                syncTiers: false,
+            }],
+            4,
+            '관리자 B',
+        );
+
+        expect(result).toMatchObject({
+            status: 'OK',
+            updatedCount: 0,
+            snapshot: {
+                entries: [{ discordName: storedEntry.discordName }],
+                sheetVersion: 4,
+            },
+        });
+        expect(redis.eval).toHaveBeenCalledTimes(2);
+    });
+
     it('서로 다른 Discord ID가 있으면 같은 배틀태그의 신규 유저도 함께 저장한다', async () => {
         const redis = createRedis();
         vi.mocked(redis.eval)

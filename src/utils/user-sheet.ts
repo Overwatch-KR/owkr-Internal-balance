@@ -397,7 +397,7 @@ export const syncRosterPlayersToUserSheet = async (
             if (existingIndex !== undefined) {
                 const previous = entries[existingIndex];
                 const shouldSyncTiers = syncTierPlayerIds.has(player.id);
-                const nextDiscordName = player.discordName?.trim() ?? '';
+                const nextDiscordName = player.discordName?.trim() || previous.discordName;
                 const nextBattleTag = player.name.trim();
                 const nextTank = shouldSyncTiers
                     ? cleanUserSheetRank(formatRank(player.tank))

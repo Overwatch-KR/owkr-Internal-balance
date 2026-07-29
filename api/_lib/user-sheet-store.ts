@@ -537,7 +537,9 @@ export const syncRosterUserSheetEntries = async (
         const support = shouldSyncTiers ? sanitizeRank(source.support) : existing?.support ?? '';
         const editableFields = {
             discordUserId: discordUserId || existing?.discordUserId || undefined,
-            discordName: sanitizeText(source.discordName, 100),
+            discordName: sanitizeText(source.discordName, 100)
+                || existing?.discordName
+                || '',
             battleTag,
             tank,
             dps,
