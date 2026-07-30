@@ -142,7 +142,6 @@ export const useRosterManagement = ({
             tank: { tier: inputs.tTier, div: inputs.tDiv, score: getTierScore(inputs.tTier, inputs.tDiv), isPreferred: inputs.tPref, isAvoided: inputs.tAvoid },
             dps: { tier: inputs.dTier, div: inputs.dDiv, score: getTierScore(inputs.dTier, inputs.dDiv), isPreferred: inputs.dPref, isAvoided: inputs.dAvoid },
             sup: { tier: inputs.sTier, div: inputs.sDiv, score: getTierScore(inputs.sTier, inputs.sDiv), isPreferred: inputs.sPref, isAvoided: inputs.sAvoid },
-            noMic: inputs.noMic,
         });
         const isEditing = editingPlayerId !== null;
         match.setPlayers(previous => isEditing

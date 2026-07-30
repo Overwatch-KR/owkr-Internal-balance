@@ -41,7 +41,7 @@ const COLUMNS: ReadonlyArray<{
     { field: 'tank', label: '탱커', placeholder: '다3', width: 'min-w-28' },
     { field: 'dps', label: '딜러', placeholder: '플1', width: 'min-w-28' },
     { field: 'support', label: '힐러', placeholder: '마5', width: 'min-w-28' },
-    { field: 'note', label: '특이사항', placeholder: '마이크X', width: 'min-w-72' },
+    { field: 'note', label: '특이사항', placeholder: '운영 메모', width: 'min-w-72' },
 ];
 
 const ERROR_LABELS: Record<UserSheetValidationError, string> = {

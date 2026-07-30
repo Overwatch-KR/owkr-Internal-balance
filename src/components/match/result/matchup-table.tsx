@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Ban, Star, MicOff, ShieldQuestion } from 'lucide-react';
+import { Ban, Star, ShieldQuestion } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { formatRank } from '../../../constants';
 import type { MatchResultData, Player, Role, SwapSource, Tier } from '../../../types';
@@ -32,14 +32,12 @@ interface RowDef {
 interface PlayerStatusIndicatorsProps {
     isPreferred: boolean;
     isAvoided: boolean;
-    noMic?: boolean;
     className?: string;
 }
 
 const PlayerStatusIndicators = ({
     isPreferred,
     isAvoided,
-    noMic,
     className = '',
 }: PlayerStatusIndicatorsProps) => (
     <div className={`flex shrink-0 items-center gap-1 ${className}`}>
@@ -51,11 +49,6 @@ const PlayerStatusIndicators = ({
         {isAvoided && (
             <span className="inline-flex text-rose-400" aria-label="비선호 역할" title="비선호 역할">
                 <Ban size={12} aria-hidden="true" />
-            </span>
-        )}
-        {noMic && (
-            <span className="inline-flex text-red-400" aria-label="마이크 미사용" title="마이크 미사용">
-                <MicOff size={12} aria-hidden="true" />
             </span>
         )}
     </div>
@@ -81,7 +74,6 @@ const PlayerIdentityWithStatus = ({
         <PlayerStatusIndicators
             isPreferred={rank.isPreferred}
             isAvoided={rank.isAvoided}
-            noMic={player.noMic}
         />
     );
 

@@ -44,7 +44,7 @@ TIMEWILLTELL#31107 플4 / 플1 / 다5 (주로 힐러 아나 미즈키 합니다.
 **연화** [𝜗ৎ], 역할 아이콘, {핑크 메르시} — **어제 오후 3:20**
 BaekGoving#3820 플4?/다5!/다5!
 **에어맨이 쓰러지지 않아**역할 아이콘, 숙달자 (40LVL+) — **어제 오후 3:21**
-가면요루#3833 플5 / 플3 / 실? (마이크x)
+가면요루#3833 플5 / 플3 / 실? (장비 이슈)
 **용이** [운명.ଓ], 역할 아이콘, 신참 — **어제 오후 3:22**
 IlIllIlI#31213 탱!(정커퀸 해저드) 예상 골2 / 딜? 골4 / 힐 예상 실1
 **yog\\_1952** [오버워치], 역할 아이콘, 초보자 (25LVL+) — **어제 오후 3:23**
@@ -104,7 +104,6 @@ describe('가이드 예시 명단', () => {
 
         expect(result.players).toHaveLength(10);
         expect(result.failedLines).toHaveLength(0);
-        expect(result.players.at(-1)?.noMic).toBe(true);
         expect(ranks).toHaveLength(30);
         expect(playersWithPreference).toHaveLength(5);
         expect(playersWithAvoidance).toHaveLength(7);
@@ -125,7 +124,7 @@ describe('가이드 예시 명단', () => {
 });
 
 describe('parseMultipleLines', () => {
-    it('디스코드 헤더, 설명, 예상 티어와 마이크 표기를 함께 파싱한다', () => {
+    it('디스코드 헤더, 설명, 예상 티어와 부가 메모를 함께 파싱한다', () => {
         const { players, failedLines, avoidedRoleWarnings } = parseMultipleLines(RECENT_PARTICIPANTS);
 
         expect(failedLines).toEqual([]);
@@ -147,10 +146,8 @@ describe('parseMultipleLines', () => {
             sup: { tier: 'GRANDMASTER', div: 5 },
         });
         expect(byBattleTag.has('둥댕#3222')).toBe(false);
-        expect(byBattleTag.get('라솔메#3898')?.noMic).toBe(true);
         expect(byBattleTag.get('가면요루#3833')).toMatchObject({
             discordName: '에어맨이 쓰러지지 않아',
-            noMic: true,
             sup: { tier: 'SILVER', div: 3, isAvoided: true },
         });
         expect(byBattleTag.get('IlIllIlI#31213')).toMatchObject({

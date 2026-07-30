@@ -217,10 +217,7 @@ const extractEmojiInfo = (text: string): { cleanText: string; emojiRoles: ('TANK
  * @returns Player 객체 또는 파싱 실패 시 null
  */
 const parseRawLineToPlayer = (line: string, discordName?: string): Player | null => {
-    // "마이크x" 또는 설명 앞의 독립된 X 표기를 마이크 미사용으로 처리한다.
     const trimmedLine = line.trim();
-    const noMic = /마이크\s*[:：]?\s*x/i.test(trimmedLine)
-        || /(?:^|\s)x(?=\s|$|\()/i.test(trimmedLine);
     const cleanLine = trimmedLine.replace(/\s+[XO]$/i, '').trim();
 
     // 닉네임#태그 추출 (공백 허용)
@@ -395,7 +392,6 @@ const parseRawLineToPlayer = (line: string, discordName?: string): Player | null
         tank,
         dps,
         sup,
-        noMic
     };
 };
 

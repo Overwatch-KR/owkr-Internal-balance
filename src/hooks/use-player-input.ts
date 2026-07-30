@@ -9,7 +9,6 @@ const ROSTER_PASTE_VALIDATION_DELAY_MS = 350;
 export interface PlayerInputs {
     name: string;
     discordName: string;
-    noMic: boolean;
     tTier: Tier;
     tDiv: string;
     tPref: boolean;
@@ -30,7 +29,6 @@ export interface PlayerInputs {
 export const createDefaultPlayerInputs = (): PlayerInputs => ({
     name: '',
     discordName: '',
-    noMic: false,
     tTier: 'DIAMOND',
     tDiv: '3',
     tPref: false,
@@ -99,8 +97,7 @@ export const usePlayerInput = (initialPlayerCount: number) => {
         const hasUnsavedInput = Boolean(
             pasteText.trim()
             || inputs.name.trim()
-            || inputs.discordName.trim()
-            || inputs.noMic,
+            || inputs.discordName.trim(),
         );
         if (!hasUnsavedInput) return;
 
@@ -111,7 +108,7 @@ export const usePlayerInput = (initialPlayerCount: number) => {
 
         window.addEventListener('beforeunload', warnBeforeUnload);
         return () => window.removeEventListener('beforeunload', warnBeforeUnload);
-    }, [inputs.discordName, inputs.name, inputs.noMic, pasteText]);
+    }, [inputs.discordName, inputs.name, pasteText]);
 
     const resetInputs = useCallback(() => {
         setEditingPlayerId(null);
@@ -122,7 +119,6 @@ export const usePlayerInput = (initialPlayerCount: number) => {
         setInputs({
             name: player.name,
             discordName: player.discordName ?? '',
-            noMic: player.noMic ?? false,
             tTier: player.tank.tier,
             tDiv: getEditableDivision(player.tank.tier, player.tank.div),
             tPref: player.tank.isPreferred,

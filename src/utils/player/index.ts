@@ -26,7 +26,6 @@ const getPlayerFingerprint = (player: Player): string => {
         getPlayerIdentityKey(player),
         normalizeBattleTag(player.name),
         player.discordName?.trim() ?? '',
-        player.noMic ? 1 : 0,
         rankFingerprint(player.tank),
         rankFingerprint(player.dps),
         rankFingerprint(player.sup),

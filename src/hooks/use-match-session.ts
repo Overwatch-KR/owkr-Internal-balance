@@ -20,6 +20,7 @@ const getStorageKeys = (userId: string) => ({
     PLAYERS: `owkr_players:${userId}`,
     RESULT: `owkr_result:${userId}`,
     PARTICIPANT_MENTIONS: `owkr_participant_mentions:${userId}`,
+    PARTICIPANT_INCLUDES_ADMIN: `owkr_participant_includes_admin:${userId}`,
 });
 
 /**
@@ -39,6 +40,12 @@ export const useMatchSession = (userId: string) => {
             storageKeys.PARTICIPANT_MENTIONS,
             MATCH_SESSION_EXPIRY_MS,
         ) || ''
+    ));
+    const [participantIncludesAdmin, setParticipantIncludesAdmin] = useState(() => (
+        getWithExpiry<boolean>(
+            storageKeys.PARTICIPANT_INCLUDES_ADMIN,
+            MATCH_SESSION_EXPIRY_MS,
+        ) ?? false
     ));
     const [initialMatchState] = useState<StoredMatchState | null>(() => {
         const savedState = getWithExpiry<MatchResultData | StoredMatchState>(
@@ -106,6 +113,18 @@ export const useMatchSession = (userId: string) => {
     }, [participantMentions, storageKeys.PARTICIPANT_MENTIONS]);
 
     useEffect(() => {
+        if (participantIncludesAdmin) {
+            setWithExpiry(
+                storageKeys.PARTICIPANT_INCLUDES_ADMIN,
+                true,
+                MATCH_SESSION_EXPIRY_MS,
+            );
+        } else {
+            removeItem(storageKeys.PARTICIPANT_INCLUDES_ADMIN);
+        }
+    }, [participantIncludesAdmin, storageKeys.PARTICIPANT_INCLUDES_ADMIN]);
+
+    useEffect(() => {
         if (!isMounted.current) return;
         if (result) {
             setWithExpiry<StoredMatchState>(
@@ -122,10 +141,12 @@ export const useMatchSession = (userId: string) => {
         alternatives,
         balanceTeams,
         isBalancing,
+        participantIncludesAdmin,
         participantMentions,
         players,
         result,
         setAlternatives,
+        setParticipantIncludesAdmin,
         setParticipantMentions,
         setPlayers,
         setResult,

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { AlertCircle, Clock, FileSpreadsheet, MicOff, NotebookPen, Pencil, Trash2, Users } from 'lucide-react';
+import { AlertCircle, Clock, FileSpreadsheet, NotebookPen, Pencil, Trash2, Users } from 'lucide-react';
 import type { Player } from '../../../types';
 import {
     getPlayerUserSheetLookupKey,
@@ -78,12 +78,6 @@ const PlayerList = ({
                     <div className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5">
                         <PlayerIdentity player={player} layout="inline" />
                         <BattleTagCopyButton battleTag={player.name} />
-                        {player.noMic && (
-                            <span className="inline-flex items-center gap-1 text-[11px] text-rose-400">
-                                <MicOff size={12} aria-hidden="true" />
-                                마이크 없음
-                            </span>
-                        )}
                     </div>
 
                     <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">

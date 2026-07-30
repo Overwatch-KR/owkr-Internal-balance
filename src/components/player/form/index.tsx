@@ -7,7 +7,6 @@ import {
     ChevronUp,
     ListChecks,
     MessageSquareText,
-    MicOff,
     Pencil,
     Sparkles,
     User,
@@ -22,10 +21,13 @@ import RosterPasteTextarea from './roster-paste-textarea';
 
 export type { PlayerInputMode } from '../../../hooks/use-player-input';
 
-interface PlayerFormProps {
+export interface PlayerFormProps {
     players: Player[];
     participantMentions: string;
     setParticipantMentions: (value: string) => void;
+    participantIncludesAdmin: boolean;
+    setParticipantIncludesAdmin: (value: boolean) => void;
+    currentAdminName: string;
     inputs: PlayerInputs;
     setInputs: React.Dispatch<React.SetStateAction<PlayerFormProps['inputs']>>;
     addPlayer: () => void;
@@ -47,6 +49,7 @@ interface PlayerFormProps {
     onCancelEdit: () => void;
     onClearManualInputError: () => void;
     onRemovePlayer: (playerId: number) => void;
+    variant?: 'card' | 'workspace';
 }
 
 interface RosterImportActionProps {
@@ -87,6 +90,9 @@ const PlayerForm = ({
     players,
     participantMentions,
     setParticipantMentions,
+    participantIncludesAdmin,
+    setParticipantIncludesAdmin,
+    currentAdminName,
     inputs,
     setInputs,
     addPlayer,
@@ -108,7 +114,9 @@ const PlayerForm = ({
     onCancelEdit,
     onClearManualInputError,
     onRemovePlayer,
+    variant = 'card',
 }: PlayerFormProps) => {
+    const isWorkspace = variant === 'workspace';
     const reduceMotion = useReducedMotion();
     const battleTagInputRef = React.useRef<HTMLInputElement>(null);
     const inputScrollRef = React.useRef<HTMLDivElement>(null);
@@ -145,7 +153,14 @@ const PlayerForm = ({
     };
 
     return (
-        <section id="player-input" className="card scroll-mt-24 shrink-0 overflow-hidden p-0" aria-label="참가자 입력">
+        <section
+            id="player-input"
+            className={`card scroll-mt-24 overflow-hidden p-0 ${
+                isWorkspace ? 'min-h-[34rem]' : 'shrink-0'
+            }`}
+            aria-label="참가자 입력"
+        >
+            {!isWorkspace && (
             <div className="flex min-h-14 items-center gap-3 px-4 py-3">
                 <div className="flex min-w-0 flex-1 items-center gap-3">
                     {isCollapsed ? (
@@ -194,27 +209,33 @@ const PlayerForm = ({
                     )}
                 </button>
             </div>
+            )}
 
             <AnimatePresence initial={false}>
-                {!isCollapsed ? (
+                {(isWorkspace || !isCollapsed) ? (
                     <motion.div
                         id="player-input-content"
                         key="input-content"
-                        initial={reduceMotion ? false : { height: 0, opacity: 0 }}
+                        initial={isWorkspace || reduceMotion ? false : { height: 0, opacity: 0 }}
                         animate={{ height: 'auto', opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
                         transition={animation}
-                        className="overflow-hidden border-t border-slate-800/50"
+                        className={`overflow-hidden ${isWorkspace ? '' : 'border-t border-slate-800/50'}`}
                     >
                         <div
                             ref={inputScrollRef}
                             role="region"
                             aria-label="참가자 입력 내용"
                             tabIndex={0}
-                            className="custom-scrollbar scroll-region px-4 pb-4 pr-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan-400/60 xl:max-h-[calc(44dvh-3.5rem)] xl:overflow-y-auto xl:overscroll-contain"
+                            className={`custom-scrollbar scroll-region px-5 py-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-cyan-400/60 ${
+                                isWorkspace
+                                    ? 'lg:max-h-[calc(100dvh-16rem)] lg:overflow-y-auto lg:overscroll-contain'
+                                    : 'xl:max-h-[calc(44dvh-3.5rem)] xl:overflow-y-auto xl:overscroll-contain'
+                            }`}
                         >
 
                             {/* Tab Navigation */}
+                            {!isWorkspace && (
                             <div id="player-input-tabs" className="mb-4 grid grid-cols-3 gap-1 rounded-xl bg-surface p-1 xl:sticky xl:top-0 xl:z-10 xl:-mx-1 xl:bg-surface-elevated/95 xl:pb-2 xl:backdrop-blur" role="group" aria-label="입력 방식">
                             <button
                                 id="discord-input-tab"
@@ -259,6 +280,7 @@ const PlayerForm = ({
                                 참여 대조
                             </button>
                         </div>
+                            )}
 
                         {/* Discord Parsing Mode */}
                         {mode === 'discord' && (
@@ -358,25 +380,6 @@ const PlayerForm = ({
                                     />
                                 </div>
 
-                                <label
-                                    htmlFor="no-mic"
-                                    className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-slate-700/70 bg-surface/60 px-3 py-2.5 transition-colors hover:border-slate-600 hover:bg-white/[0.03]"
-                                >
-                                    <input
-                                        id="no-mic"
-                                        name="no-mic"
-                                        type="checkbox"
-                                        checked={inputs.noMic}
-                                        onChange={(event) => setInputs(prev => ({ ...prev, noMic: event.target.checked }))}
-                                        className="h-4 w-4 shrink-0 accent-rose-500"
-                                    />
-                                    <MicOff size={16} className={inputs.noMic ? 'text-rose-400' : 'text-slate-500'} aria-hidden="true" />
-                                    <span className="min-w-0">
-                                        <span className="block text-sm font-medium text-slate-200">마이크 미사용</span>
-                                        <span className="block text-xs text-slate-500">음성 채팅에 참여하지 않는 참가자라면 선택하세요</span>
-                                    </span>
-                                </label>
-
                                 <div className="space-y-3">
                                     <TierSelect prefix="t" label="탱커" prefKey="tPref" avoidKey="tAvoid" inputs={inputs} setInputs={setInputs} />
                                     <TierSelect prefix="d" label="딜러" prefKey="dPref" avoidKey="dAvoid" inputs={inputs} setInputs={setInputs} />
@@ -399,6 +402,9 @@ const PlayerForm = ({
                                 mentionText={participantMentions}
                                 setMentionText={setParticipantMentions}
                                 onRemovePlayer={onRemovePlayer}
+                                currentAdminName={currentAdminName}
+                                includesAdmin={participantIncludesAdmin}
+                                onIncludesAdminChange={setParticipantIncludesAdmin}
                             />
                         )}
 

@@ -20,7 +20,6 @@ const ROLES: Role[] = ['TANK', 'DPS', 'SUPPORT'];
 const SCORE_WEIGHTS = {
     roleMatchup: 3,
     teamVariance: 0.5,
-    micImbalance: 200,
 } as const;
 
 interface RoleScores {
@@ -167,15 +166,6 @@ const calculateRoleMatchupDiff = (teamA: AssignmentResult, teamB: AssignmentResu
     Math.abs(teamA.roleScores.tank - teamB.roleScores.tank)
     + Math.abs(teamA.roleScores.dps - teamB.roleScores.dps)
     + Math.abs(teamA.roleScores.support - teamB.roleScores.support);
-
-/**
- * @description 두 팀의 마이크 미사용 인원 차이를 계산한다.
- */
-const calculateMicImbalance = (teamA: Player[], teamB: Player[]): number => {
-    const noMicA = teamA.filter((player) => player.noMic).length;
-    const noMicB = teamB.filter((player) => player.noMic).length;
-    return Math.abs(noMicA - noMicB);
-};
 
 /**
  * @description 탱커 차이가 허용 범위를 넘으면 안전 범위 진입과 격차 축소를 비선호 배정보다 우선한다.
@@ -397,7 +387,6 @@ export const balancePlayers = (players: Player[]): BalanceResult => {
             else if ((teamBMask >> index) & 1) teamBPlayers.push(players[index]);
         }
 
-        const micImbalance = calculateMicImbalance(teamAPlayers, teamBPlayers);
         const teamAAssignments = getAllTeamAssignments(teamAPlayers);
         const teamBAssignments = getAllTeamAssignments(teamBPlayers);
 
@@ -416,8 +405,7 @@ export const balancePlayers = (players: Player[]): BalanceResult => {
                     unrankedAssignments: teamA.unrankedAssignments + teamB.unrankedAssignments,
                     compositeScore: realDiff
                         + roleMatchupDiff * SCORE_WEIGHTS.roleMatchup
-                        + teamVariance * SCORE_WEIGHTS.teamVariance
-                        + micImbalance * SCORE_WEIGHTS.micImbalance,
+                        + teamVariance * SCORE_WEIGHTS.teamVariance,
                     realDiff,
                     tankDiff,
                 });

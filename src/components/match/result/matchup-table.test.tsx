@@ -23,7 +23,6 @@ const createPlayer = (id: number): Player => ({
     tank: createRank('BRONZE', 1, id === 1 ? { isPreferred: true } : {}),
     dps: createRank('DIAMOND', 3, id === 3 ? { isAvoided: true } : {}),
     sup: createRank('UNRANKED', 0),
-    noMic: id === 1,
 });
 
 const players = Array.from({ length: 10 }, (_, index) => createPlayer(index + 1));
@@ -75,7 +74,6 @@ describe('MatchupTable', () => {
         expect(markup).toContain('미배치');
         expect(markup).toContain('sm:hidden');
         expect(markup).toContain('hidden w-full min-w-0');
-        expect(markup).toContain('aria-label="마이크 미사용"');
         expect(markup).toContain('id="matchup-table"');
         expect(markup).toContain('id="matchup-tank-row"');
         expect(countMatches(markup, /data-match-player-id=/g)).toBe(10);
@@ -106,7 +104,7 @@ describe('MatchupTable', () => {
         expectEqualHeightMatchupSlots(markup);
     });
 
-    it('선호·비선호·미배치·마이크 상태와 긴 이름을 전체 티어 모드에 유지한다', () => {
+    it('선호·비선호·미배치 상태와 긴 이름을 전체 티어 모드에 유지한다', () => {
         const markup = renderToStaticMarkup(
             <MatchupTable
                 matchResult={matchResult}
@@ -119,7 +117,6 @@ describe('MatchupTable', () => {
         expect(markup).toContain('title="탱커 브1★ · 현재 배정"');
         expect(markup).toContain('title="딜러 다3? · 현재 배정"');
         expect(markup).toContain('title="힐러 미배치');
-        expect(markup).toContain('aria-label="마이크 미사용"');
         expect(markup).toContain('아주 긴 디스코드 닉네임 1');
         expect(markup).toContain('VeryLongBattleTag1#12345');
     });

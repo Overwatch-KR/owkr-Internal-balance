@@ -18,11 +18,12 @@ import { useUserSheet } from './hooks/use-user-sheet';
 import { getErrorMessage } from './utils/api';
 import { clearPlayerNoteCache } from './utils/player-note';
 import type { SwapSource } from './types';
-import PlayerForm from './components/player/form';
 import {
     RosterIdentityResolver,
 } from './components/player/form/roster-identity-resolver';
 import PlayerList from './components/player/list';
+import { ParticipantDashboardSummary } from './components/player/participant-dashboard-summary';
+import { ParticipantWorkspace } from './components/player/participant-workspace';
 import { OnboardingGuide } from './components/onboarding-guide';
 import { GuideResumePrompt } from './components/guide-resume-prompt';
 import { AppToast } from './components/app-toast';
@@ -63,10 +64,12 @@ const MatchApp = ({ authMode, csrfToken, logout, user }: MatchAppProps) => {
         alternatives,
         balanceTeams,
         isBalancing,
+        participantIncludesAdmin,
         participantMentions,
         players,
         result,
         setAlternatives,
+        setParticipantIncludesAdmin,
         setParticipantMentions,
         setPlayers,
         setResult,
@@ -200,8 +203,12 @@ const MatchApp = ({ authMode, csrfToken, logout, user }: MatchAppProps) => {
         onPrepareOpen: () => {
             setSwapSource(null);
             if (!result) setIsInputCollapsed(false);
+            navigate(result ? '/' : '/participants');
         },
-        onSelectInputMode: handleGuideInputMode,
+        onSelectInputMode: (mode) => {
+            handleGuideInputMode(mode);
+            navigate('/participants');
+        },
         onSwapExample: () => {
             if (!result) return;
             setResult(swapMatchResultPlayers(
@@ -217,6 +224,13 @@ const MatchApp = ({ authMode, csrfToken, logout, user }: MatchAppProps) => {
     const handleInterruptGuide = useCallback(() => {
         handleDismissGuide();
     }, [handleDismissGuide]);
+    const handleAppGuideStepChange = useCallback((
+        step: Parameters<typeof handleGuideStepChange>[0],
+    ) => {
+        if (step === 'start-matching' || step.startsWith('result-')) navigate('/');
+        else if (step.startsWith('start-')) navigate('/participants');
+        handleGuideStepChange(step);
+    }, [handleGuideStepChange, navigate]);
 
     // 참여 명단 (첫 10명)과 대기 명단 (나머지) 분리
     const participants = players.slice(0, 10);
@@ -241,6 +255,49 @@ const MatchApp = ({ authMode, csrfToken, logout, user }: MatchAppProps) => {
             showToast('error', getErrorMessage(error, '로그아웃하지 못했습니다. 다시 시도해 주세요.'));
             setIsLoggingOut(false);
         }
+    };
+    const currentAdminName = user.globalName ?? user.username;
+    const playerFormProps = {
+        players,
+        participantMentions,
+        setParticipantMentions,
+        participantIncludesAdmin,
+        setParticipantIncludesAdmin,
+        currentAdminName,
+        inputs,
+        setInputs,
+        addPlayer,
+        pasteText,
+        pasteAvoidedRoleWarnings,
+        isPasteValidationPending,
+        onPasteTextChange: updatePasteText,
+        handlePaste,
+        failedParses,
+        setFailedParses,
+        isCollapsed: isInputCollapsed,
+        summary: inputSummary,
+        onExpand: () => setIsInputCollapsed(false),
+        onCollapse: () => setIsInputCollapsed(true),
+        mode: inputMode,
+        onModeChange: setInputMode,
+        isEditing: editingPlayerId !== null,
+        manualInputError,
+        onCancelEdit: resetPlayerInputs,
+        onClearManualInputError: () => setManualInputError(''),
+        onRemovePlayer: handleRemovePlayer,
+    };
+    const playerListProps = {
+        participants,
+        waitlist,
+        onEditPlayer: startEditingPlayer,
+        onRemovePlayer: handleRemovePlayer,
+        onClearAll: handleClearAll,
+        csrfToken,
+        noteCacheScope: user.id,
+        userSheetByBattleTag,
+        onOpenUserSheet: (battleTag: string, entryId?: string) => {
+            userSheet.open(battleTag, entryId);
+        },
     };
 
     if (pathname === '/scrims') {
@@ -278,7 +335,7 @@ const MatchApp = ({ authMode, csrfToken, logout, user }: MatchAppProps) => {
                     setSwapSource(null);
                     userSheet.open();
                 }}
-                userName={user.globalName ?? user.username}
+                userName={currentAdminName}
                 userSheetHasError={Boolean(userSheet.error)}
             />
 
@@ -288,68 +345,52 @@ const MatchApp = ({ authMode, csrfToken, logout, user }: MatchAppProps) => {
                 tabIndex={-1}
                 className="mx-auto max-w-[1600px] scroll-mt-20 px-4 py-6 focus:outline-none md:px-8 md:py-8"
             >
-                <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[minmax(400px,460px)_minmax(0,1fr)] xl:items-start">
-                    {/* Left Panel - Player Input */}
-                    <div className="flex min-h-0 min-w-0 flex-col gap-4 xl:sticky xl:top-24 xl:h-[calc(100dvh-8rem)]">
-                        <PlayerForm
-                            players={players}
-                            participantMentions={participantMentions}
-                            setParticipantMentions={setParticipantMentions}
-                            inputs={inputs}
-                            setInputs={setInputs}
-                            addPlayer={addPlayer}
-                            pasteText={pasteText}
-                            pasteAvoidedRoleWarnings={pasteAvoidedRoleWarnings}
-                            isPasteValidationPending={isPasteValidationPending}
-                            onPasteTextChange={updatePasteText}
-                            handlePaste={handlePaste}
-                            failedParses={failedParses}
-                            setFailedParses={setFailedParses}
-                            isCollapsed={isInputCollapsed}
-                            summary={inputSummary}
-                            onExpand={() => setIsInputCollapsed(false)}
-                            onCollapse={() => setIsInputCollapsed(true)}
-                            mode={inputMode}
-                            onModeChange={setInputMode}
-                            isEditing={editingPlayerId !== null}
-                            manualInputError={manualInputError}
-                            onCancelEdit={resetPlayerInputs}
-                            onClearManualInputError={() => setManualInputError('')}
-                            onRemovePlayer={handleRemovePlayer}
-                        />
-                        <PlayerList
-                            participants={participants}
-                            waitlist={waitlist}
-                            onEditPlayer={startEditingPlayer}
-                            onRemovePlayer={handleRemovePlayer}
-                            onClearAll={handleClearAll}
-                            csrfToken={csrfToken}
-                            noteCacheScope={user.id}
+                {pathname === '/participants' ? (
+                    <ParticipantWorkspace
+                        formProps={playerFormProps}
+                        listProps={playerListProps}
+                        participantCount={participants.length}
+                        waitlistCount={waitlist.length}
+                        reviewCount={failedParses.length}
+                        onClose={() => navigate('/')}
+                    />
+                ) : (
+                    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[minmax(380px,430px)_minmax(0,1fr)] xl:items-start">
+                        <div className="flex min-h-0 min-w-0 flex-col gap-4 xl:sticky xl:top-24 xl:h-[calc(100dvh-8rem)]">
+                            <ParticipantDashboardSummary
+                                participantCount={participants.length}
+                                waitlistCount={waitlist.length}
+                                reviewCount={failedParses.length}
+                                onOpen={() => navigate('/participants')}
+                            />
+                            <PlayerList
+                                {...playerListProps}
+                                onEditPlayer={(player) => {
+                                    startEditingPlayer(player);
+                                    navigate('/participants');
+                                }}
+                            />
+                        </div>
+
+                        <MatchResultPanel
+                            alternatives={alternatives}
+                            isBalancing={isBalancing}
+                            isReady={isReady}
+                            isResultStale={isResultStale}
+                            onCancelSwap={() => setSwapSource(null)}
+                            onClearResult={handleClearResult}
+                            onRunMatching={() => void handleRunMatching()}
+                            onSelectAlternative={handleSelectAlternative}
+                            onShowAllRanksChange={setShowAllRanks}
+                            onSlotClick={handleSlotClick}
+                            participantCount={participants.length}
+                            result={result}
+                            showAllRanks={showAllRanks}
+                            swapSource={swapSource}
                             userSheetByBattleTag={userSheetByBattleTag}
-                            onOpenUserSheet={(battleTag, entryId) => {
-                                userSheet.open(battleTag, entryId);
-                            }}
                         />
                     </div>
-
-                    <MatchResultPanel
-                        alternatives={alternatives}
-                        isBalancing={isBalancing}
-                        isReady={isReady}
-                        isResultStale={isResultStale}
-                        onCancelSwap={() => setSwapSource(null)}
-                        onClearResult={handleClearResult}
-                        onRunMatching={() => void handleRunMatching()}
-                        onSelectAlternative={handleSelectAlternative}
-                        onShowAllRanksChange={setShowAllRanks}
-                        onSlotClick={handleSlotClick}
-                        participantCount={participants.length}
-                        result={result}
-                        showAllRanks={showAllRanks}
-                        swapSource={swapSource}
-                        userSheetByBattleTag={userSheetByBattleTag}
-                    />
-                </div>
+                )}
             </main>
             <AnimatePresence>
                 {userSheet.isOpen && (
@@ -425,7 +466,7 @@ const MatchApp = ({ authMode, csrfToken, logout, user }: MatchAppProps) => {
                         onComplete={handleCompleteGuide}
                         onDismiss={handleDismissGuide}
                         onInterrupt={handleInterruptGuide}
-                        onStepChange={handleGuideStepChange}
+                        onStepChange={handleAppGuideStepChange}
                     />
                 )}
             </AnimatePresence>

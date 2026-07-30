@@ -43,7 +43,6 @@ export interface Rank {
  * @property tank - 탱커 역할 랭크
  * @property dps - 딜러 역할 랭크
  * @property sup - 힐러 역할 랭크
- * @property noMic - 마이크 미사용 여부
  */
 export interface Player {
     id: number;
@@ -54,7 +53,6 @@ export interface Player {
     tank: Rank;
     dps: Rank;
     sup: Rank;
-    noMic?: boolean;
 }
 
 /**

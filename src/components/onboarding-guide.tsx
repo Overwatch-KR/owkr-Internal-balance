@@ -58,7 +58,7 @@ const START_GUIDE_STEPS: readonly GuideStep[] = [
         icon: User,
         target: '#manual-input-tab',
         title: '한 명씩 직접 입력할 수도 있어요',
-        description: '배틀태그와 탱커·딜러·힐러 티어를 입력하고 선호, 비선호, 마이크 미사용 상태를 선택할 수 있습니다.',
+        description: '배틀태그와 탱커·딜러·힐러 티어를 입력하고 선호·비선호 역할을 선택할 수 있습니다.',
     },
     {
         id: 'start-mentions',
@@ -79,7 +79,7 @@ const START_GUIDE_STEPS: readonly GuideStep[] = [
         icon: Shuffle,
         target: '#matching-action',
         title: '팀 자동 배정을 실행하세요',
-        description: '강조된 팀 자동 배정 버튼을 직접 눌러주세요. 역할 선호, 티어 차이, 마이크 인원을 함께 고려해 여러 팀 조합을 계산합니다.',
+        description: '강조된 팀 자동 배정 버튼을 직접 눌러주세요. 역할 선호와 티어 차이를 고려해 여러 팀 조합을 계산합니다.',
     },
 ] as const;
 
