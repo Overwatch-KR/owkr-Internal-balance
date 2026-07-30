@@ -23,6 +23,14 @@ const SESSION_COOKIE = 'owkr_session';
 const OAUTH_STATE_COOKIE = 'owkr_oauth_state';
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 8;
 const OAUTH_STATE_MAX_AGE_SECONDS = 60 * 10;
+const LOCAL_AUTH_CSRF_TOKEN = 'owkr-local-auth-csrf-token';
+const LOCAL_AUTH_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]']);
+const LOCAL_AUTH_USER: SessionUser = {
+    id: 'owkr-local-admin',
+    username: 'local-admin',
+    globalName: '로컬 관리자',
+    csrfToken: LOCAL_AUTH_CSRF_TOKEN,
+};
 
 const getJwtSecret = (): string => {
     const secret = process.env.JWT_SECRET;
@@ -40,6 +48,28 @@ const isSecureRequest = (req: VercelRequest): boolean => (
 const splitIds = (value?: string): string[] => (
     value?.split(',').map(id => id.trim()).filter(Boolean) ?? []
 );
+
+/**
+ * @description 명시적으로 허용된 비프로덕션 루프백 요청인지 확인한다.
+ */
+export const isLocalAuthRequest = (req: VercelRequest): boolean => {
+    if (
+        process.env.OWKR_LOCAL_AUTH_BYPASS !== 'true'
+        || process.env.NODE_ENV === 'production'
+    ) {
+        return false;
+    }
+
+    const hostHeader = req.headers.host;
+    if (!hostHeader) return false;
+
+    try {
+        const hostname = new URL(`http://${hostHeader}`).hostname.toLowerCase();
+        return LOCAL_AUTH_HOSTNAMES.has(hostname);
+    } catch {
+        return false;
+    }
+};
 
 /**
  * @description Discord 사용자 ID가 관리자 허용 목록에 포함되는지 확인한다.
@@ -117,6 +147,8 @@ export const createSessionCookie = (req: VercelRequest, user: Omit<SessionUser, 
  * @description 요청의 서명 세션을 검증해 로그인된 운영자 정보를 반환한다.
  */
 export const getSessionUser = (req: VercelRequest): SessionUser | null => {
+    if (isLocalAuthRequest(req)) return LOCAL_AUTH_USER;
+
     const token = parseCookie(req.headers.cookie ?? '')[SESSION_COOKIE];
     if (!token) return null;
 

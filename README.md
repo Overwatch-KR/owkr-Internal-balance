@@ -132,22 +132,40 @@ BattleTag가 일치하면 화면의 대진표에 표시되지만, 복사 이미�
 - Node.js 24
 - pnpm 11.9
 - Vercel CLI
-- Discord OAuth 애플리케이션
-- Upstash Redis 또는 Vercel KV 연동 Redis
+- Discord OAuth 애플리케이션 (`pnpm dev:full` 사용 시)
+- 운영 Upstash Redis 또는 Vercel KV 연동 Redis 접근 권한
 
 ### 설치 및 실행
 
 ```bash
 pnpm install
 cp .env.example .env.local
-pnpm dev:full
+# .env.local에 운영 Redis URL과 Token 설정
+pnpm dev:local
 ```
 
 `pnpm dev`는 Vite 정적 화면만 실행합니다. 로그인, 유저 시트와 메모 API까지 확인하려면
-Vercel Functions를 함께 실행하는 `pnpm dev:full`을 사용해야 합니다.
+Vercel Functions를 함께 실행하는 다음 명령 중 하나를 사용해야 합니다.
 
-처음 `vercel dev`를 실행할 때 기존 Vercel 프로젝트를 선택하고, 별도의 프레임워크 설정은
-저장소의 `vercel.json`을 그대로 사용하면 됩니다.
+| 명령 | 인증 방식 | 용도 |
+| --- | --- | --- |
+| `pnpm dev:local` | 고정 로컬 사용자 | Discord OAuth 없이 운영 Redis에 연결 |
+| `pnpm dev:full` | 실제 Discord OAuth | OAuth 로그인과 운영 환경에 가까운 인증 흐름 검증 |
+
+`pnpm dev:local`은 명령을 실행한 로컬 Vercel 개발 서버의 루프백 요청에만 인증 우회를
+활성화합니다. Discord Client ID, Client Secret, 관리자 목록과 JWT Secret은 필요하지 않지만,
+유저 시트와 개인 운영 메모는 `.env.local`의 운영 Redis 환경 변수를 그대로 사용합니다.
+이 모드에서 조회·추가·수정·삭제한 내용은 별도 샌드박스를 거치지 않고 운영 데이터에 즉시
+반영됩니다.
+
+이 명령은 `vercel dev --local`로 Functions를 실행하므로 Vercel 계정 로그인이나 프로젝트
+연결도 필요하지 않습니다. Vercel Cloud에서 환경 변수를 자동으로 가져오지 않으므로
+`.env.local`에 `UPSTASH_REDIS_REST_URL`과 `UPSTASH_REDIS_REST_TOKEN`을 직접 설정해야 합니다.
+파일은 Git에서 제외되어 있지만 외부에 공유하거나 커밋하지 마세요.
+
+Vercel CLI에 로그인할 수 있는 환경에서 운영 변수를 자동으로 내려받으려는 경우에만
+`pnpm exec vercel env pull .env.local --environment=production`을 선택적으로 사용할 수 있습니다.
+이 명령은 기존 `.env.local`을 덮어쓸 수 있습니다.
 
 ### 환경 변수
 
@@ -174,8 +192,10 @@ UPSTASH_REDIS_REST_TOKEN=
 Redis 연동에서 `KV_REST_API_URL`과 `KV_REST_API_TOKEN`이 제공되는 경우에도 자동으로 인식합니다.
 `KV_URL`과 `REDIS_URL`은 현재 애플리케이션 코드에서 직접 사용하지 않습니다.
 
-로컬 환경 변수는 `.env.local`, 배포 환경 변수는 Vercel 프로젝트의 Production 환경에 설정합니다.
-환경 변수를 바꾼 뒤에는 재배포해야 운영 배포에 반영됩니다.
+로컬 우회 실행에서는 `.env.local`의 운영 Redis 환경 변수로 직접 연결합니다. 운영 Redis
+자격 증명이 변경되면 로컬 파일도 직접 갱신해야 합니다.
+로컬 인증 우회 변수는 `pnpm dev:local` 명령이 서버 프로세스에만 주입하므로 `.env.local`이나
+Vercel 프로젝트 환경 변수에 직접 추가하지 않습니다.
 
 ### Discord OAuth 설정
 
