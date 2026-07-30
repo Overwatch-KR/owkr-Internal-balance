@@ -7,7 +7,10 @@ export interface AuthUser {
     globalName?: string;
 }
 
+export type AuthMode = 'discord' | 'local';
+
 interface AuthResponse {
+    authMode?: AuthMode;
     loggedIn: boolean;
     user?: AuthUser;
     csrfToken?: string;
@@ -17,6 +20,7 @@ interface AuthResponse {
  * @description 서버 세션을 조회하고 안전한 로그아웃 요청을 제공한다.
  */
 export const useAuth = () => {
+    const [authMode, setAuthMode] = useState<AuthMode>('discord');
     const [isLoading, setIsLoading] = useState(true);
     const [user, setUser] = useState<AuthUser | null>(null);
     const [csrfToken, setCsrfToken] = useState('');
@@ -29,6 +33,7 @@ export const useAuth = () => {
                 credentials: 'same-origin',
                 signal,
             });
+            setAuthMode(data.authMode === 'local' ? 'local' : 'discord');
             setUser(data.loggedIn ? data.user ?? null : null);
             setCsrfToken(data.loggedIn ? data.csrfToken ?? '' : '');
         } catch (loadError) {
@@ -53,6 +58,7 @@ export const useAuth = () => {
             credentials: 'same-origin',
             headers: { 'X-CSRF-Token': csrfToken },
         });
+        setAuthMode('discord');
         setUser(null);
         setCsrfToken('');
     }, [csrfToken]);
@@ -62,5 +68,5 @@ export const useAuth = () => {
         void loadSession();
     }, [loadSession]);
 
-    return { csrfToken, error, isLoading, logout, retry, user };
+    return { authMode, csrfToken, error, isLoading, logout, retry, user };
 };

@@ -22,7 +22,7 @@ import {
 import { useOnboardingGuide } from './hooks/use-onboarding-guide';
 import { usePlayerInput } from './hooks/use-player-input';
 import { useToast } from './hooks/use-toast';
-import { useAuth, type AuthUser } from './hooks/use-auth';
+import { useAuth, type AuthMode, type AuthUser } from './hooks/use-auth';
 import { useMatchSession } from './hooks/use-match-session';
 import { useUserSheet } from './hooks/use-user-sheet';
 import { getErrorMessage } from './utils/api';
@@ -54,6 +54,7 @@ const UserSheetModal = lazy(() => import('./components/user-sheet/user-sheet-mod
 const normalizePlayerName = (name: string) => name.trim().toLowerCase();
 
 interface MatchAppProps {
+    authMode: AuthMode;
     csrfToken: string;
     logout: () => Promise<void>;
     user: AuthUser;
@@ -64,7 +65,7 @@ interface PendingIdentityImport {
     incoming: Player[];
 }
 
-const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
+const MatchApp = ({ authMode, csrfToken, logout, user }: MatchAppProps) => {
     const {
         alternatives,
         balanceTeams,
@@ -627,6 +628,7 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
                 본문으로 건너뛰기
             </a>
             <AppHeader
+                authMode={authMode}
                 isGuideOpen={isGuideOpen || isGuideResumePromptOpen}
                 isLoggingOut={isLoggingOut}
                 isUserSheetOpen={userSheet.isOpen}
@@ -810,10 +812,17 @@ const MatchApp = ({ csrfToken, logout, user }: MatchAppProps) => {
 };
 
 const App = () => {
-    const { csrfToken, error, isLoading, logout, retry, user } = useAuth();
+    const { authMode, csrfToken, error, isLoading, logout, retry, user } = useAuth();
     if (isLoading) return <LoadingScreen />;
     if (!user) return <LoginScreen serviceError={error} onRetry={retry} />;
-    return <MatchApp csrfToken={csrfToken} logout={logout} user={user} />;
+    return (
+        <MatchApp
+            authMode={authMode}
+            csrfToken={csrfToken}
+            logout={logout}
+            user={user}
+        />
+    );
 };
 
 export default App;
