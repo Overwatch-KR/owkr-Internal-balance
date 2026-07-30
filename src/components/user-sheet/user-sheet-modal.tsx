@@ -23,6 +23,7 @@ import {
     UserSheetModalHeader,
     type UserSheetMode,
 } from './user-sheet-modal-header';
+import { DouMascot } from '../common/dou-mascot';
 
 interface UserSheetModalProps {
     csrfToken: string;
@@ -207,9 +208,9 @@ export function UserSheetModal({
                         onStartTour={startTour}
                     />
                 ) : isLoading && entries.length === 0 ? (
-                    <div className="flex min-h-0 flex-1 items-center justify-center gap-2 text-sm text-slate-500">
-                        <Loader2 size={16} className="animate-spin" aria-hidden="true" />
-                        유저 시트를 불러오는 중
+                    <div className="flex min-h-0 flex-1 flex-col items-center justify-center text-center text-sm text-slate-500" role="status">
+                        <DouMascot variant="loading" size={112} className="animate-pulse" decorative />
+                        <p className="mt-4">유저 시트를 불러오는 중</p>
                     </div>
                 ) : mode === 'EDIT' ? (
                     <UserSheetEditor

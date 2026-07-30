@@ -22,6 +22,7 @@ import { formatScrimLabel } from '../../utils/scrim';
 import { getErrorMessage, requestJson } from '../../utils/api';
 import { useToast } from '../../hooks/use-toast';
 import { AppToast } from '../app-toast';
+import { DouMascot } from '../common/dou-mascot';
 import { Skeleton } from '../common/skeleton';
 import { HeroPickerModal } from './hero-picker-modal';
 import { RandomBanModal } from './random-ban-modal';
@@ -62,12 +63,15 @@ const toRosterSnapshot = (players: Player[]) => players.slice(0, 10).map(player 
 
 const ScrimRecordsSkeleton = () => (
     <div className="space-y-2" role="status" aria-label="내전 기록을 불러오는 중">
-        {[0, 1, 2].map(index => (
-            <div key={index} className="rounded-xl bg-slate-900 p-3">
-                <Skeleton className="h-4 w-4/5" />
-                <Skeleton className="mt-2 h-3 w-3/5" />
-            </div>
-        ))}
+        <DouMascot variant="loading" size={64} className="mx-auto animate-pulse" decorative />
+        <div className="pt-2">
+            {[0, 1, 2].map(index => (
+                <div key={index} className="mb-2 rounded-xl bg-slate-900 p-3">
+                    <Skeleton className="h-4 w-4/5" />
+                    <Skeleton className="mt-2 h-3 w-3/5" />
+                </div>
+            ))}
+        </div>
     </div>
 );
 
@@ -673,7 +677,10 @@ export function ScrimManager({ csrfToken, players, userId, onClose }: ScrimManag
                                         ))}
                                 </div>
                             ) : (
-                                <p className="py-6 text-center text-sm text-slate-500">등록된 내전이 없습니다.</p>
+                                <div className="flex flex-col items-center py-6 text-center text-sm text-slate-500">
+                                    <DouMascot variant="empty" size={72} className="mb-3 opacity-80" decorative />
+                                    <p>등록된 내전이 없습니다.</p>
+                                </div>
                             )}
                         </div>
                     </aside>

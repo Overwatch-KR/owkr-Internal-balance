@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, Link2Off, MessageSquareText, Star } from 'lucide-react';
+import { Check, MessageSquareText, Star } from 'lucide-react';
 import { requestJson, getErrorMessage } from '../../utils/api';
 import {
     formatScrimLabel,
@@ -12,6 +12,7 @@ import { SATISFACTION_OPTIONS, type PublicParticipationKind, type ScrimRecord } 
 import { useToast } from '../../hooks/use-toast';
 import { AppToast } from '../app-toast';
 import { Skeleton } from '../common/skeleton';
+import { DouMascot } from '../common/dou-mascot';
 import { HeroGrid } from './hero-grid';
 import { RosterParticipantSelect } from './roster-participant-select';
 
@@ -32,7 +33,7 @@ const PublicParticipationSkeleton = () => (
         <Skeleton className="h-12 w-full rounded-xl" />
         <section className="card mt-5">
             <div className="mx-auto max-w-xl text-center">
-                <Skeleton className="mx-auto h-12 w-12 rounded-2xl" />
+                <DouMascot variant="loading" size={88} className="mx-auto animate-pulse" decorative />
                 <Skeleton className="mx-auto mt-4 h-7 w-52" />
                 <Skeleton className="mx-auto mt-3 h-4 w-64 max-w-full" />
                 <div className="mt-8 flex justify-center gap-3">
@@ -124,12 +125,40 @@ export function PublicParticipationPage() {
     };
     const toggleDisappointment = (item: string) => setDisappointments(current => current.includes(item) ? current.filter(value => value !== item) : [...current, item]);
     if (isLoading) return <PublicParticipationSkeleton />;
-    if (error && !data) return <main className="flex min-h-screen items-center justify-center bg-surface p-5 text-slate-200"><motion.section initial={{ opacity: 0, y: 16, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.28 }} className="w-full max-w-md overflow-hidden rounded-3xl border border-slate-800 bg-surface-elevated p-7 text-center shadow-2xl shadow-black/30"><div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border border-rose-400/20 bg-rose-400/10 text-rose-300"><Link2Off size={30} /></div><h1 className="mt-5 text-xl font-bold text-white">참여 링크를 찾을 수 없습니다</h1><p className="mt-3 leading-6 text-slate-400">이 링크는 비활성화되었거나 새 링크로 교체되었습니다. 내전 관리자에게 최신 참여 링크를 받아 다시 접속해 주세요.</p><div className="mt-5 rounded-xl border border-rose-400/15 bg-rose-400/5 px-4 py-3 text-left text-sm text-rose-200">{error}</div></motion.section></main>;
+    if (error && !data) {
+        return (
+            <main className="flex min-h-screen items-center justify-center bg-surface p-5 text-slate-200">
+                <motion.section
+                    initial={{ opacity: 0, y: 16, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    transition={{ duration: 0.28 }}
+                    className="w-full max-w-md overflow-hidden rounded-3xl border border-slate-800 bg-surface-elevated p-7 text-center shadow-2xl shadow-black/30"
+                >
+                    <DouMascot
+                        variant="link-expired"
+                        size="clamp(156px, 42vw, 208px)"
+                        className="mx-auto"
+                        decorative
+                    />
+                    <h1 className="mt-5 text-xl font-bold text-white">유효하지 않거나 비활성화된 참여 링크입니다.</h1>
+                    <p className="mt-3 leading-6 text-slate-400">링크를 다시 확인하거나 관리자에게 새로운 링크를 요청해 주세요.</p>
+                    <div role="alert" className="mt-5 rounded-xl border border-rose-400/15 bg-rose-400/5 px-4 py-3 text-left text-sm text-rose-200">
+                        {error}
+                    </div>
+                </motion.section>
+            </main>
+        );
+    }
     const isVoteLink = data?.kind === 'vote';
     return (
         <main className="mx-auto min-h-screen max-w-3xl p-4 py-8 text-slate-200 md:p-8">
             <header className="mb-6"><h1 className="text-2xl font-bold text-white">OWKR {isVoteLink ? '영웅 밴 투표' : '내전 만족도 조사'}</h1><p className="mt-1 text-sm text-slate-400">{isVoteLink ? '내전 시작 전, 최대 3명의 영웅을 선택해 주세요.' : '응답은 완전 익명으로 저장됩니다.'}</p></header>
-            {!scrim ? <div className="card">참여 가능한 내전이 없습니다.</div> : <div className="space-y-5">
+            {!scrim ? (
+                <section className="card flex min-h-64 flex-col items-center justify-center px-6 text-center">
+                    <DouMascot variant="empty" size={128} className="opacity-90" decorative />
+                    <p className="mt-4 text-slate-400">참여 가능한 내전이 없습니다.</p>
+                </section>
+            ) : <div className="space-y-5">
                 <div className="flex min-h-12 items-center rounded-xl border border-slate-800 bg-slate-900/70 px-4 text-sm text-slate-300">
                     <span className="font-medium text-white">{formatScrimLabel(scrim)}</span>
                     <span className="mx-2 text-slate-600" aria-hidden="true">·</span>
