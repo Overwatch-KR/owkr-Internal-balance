@@ -1,5 +1,5 @@
-import { lazy, Suspense, useCallback, useMemo, useState } from 'react';
-import { AnimatePresence, MotionConfig } from 'framer-motion';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { AnimatePresence, motion, MotionConfig } from 'framer-motion';
 import { SAMPLE_ROSTER, getTierScore } from './constants';
 import {
     getEligibleRosterPlayers,
@@ -46,6 +46,7 @@ import {
 } from './components/common/error-details-modal';
 import { AppHeader } from './components/layout/app-header';
 import { MatchResultPanel } from './components/match/match-result-panel';
+import { ScrimManager } from './components/scrim/scrim-manager';
 
 const UserSheetModal = lazy(() => import('./components/user-sheet/user-sheet-modal').then(module => ({
     default: module.UserSheetModal,
@@ -64,6 +65,17 @@ interface PendingIdentityImport {
     failedLines: string[];
     incoming: Player[];
 }
+
+const PageLoadingBar = () => (
+    <motion.div
+        aria-label="페이지 이동 중"
+        className="fixed inset-x-0 top-0 z-[200] h-1 origin-left bg-gradient-to-r from-cyan-400 via-blue-500 to-violet-500 shadow-lg shadow-cyan-400/40"
+        initial={{ scaleX: 0, opacity: 0 }}
+        animate={{ scaleX: 0.88, opacity: 1 }}
+        exit={{ scaleX: 1, opacity: 0 }}
+        transition={{ duration: 0.26, ease: 'easeOut' }}
+    />
+);
 
 const MatchApp = ({ authMode, csrfToken, logout, user }: MatchAppProps) => {
     const {
@@ -108,8 +120,24 @@ const MatchApp = ({ authMode, csrfToken, logout, user }: MatchAppProps) => {
     const [pendingIdentityImport, setPendingIdentityImport] = useState<PendingIdentityImport | null>(null);
     const [identityImportError, setIdentityImportError] = useState('');
     const [isApplyingIdentityImport, setIsApplyingIdentityImport] = useState(false);
+    const [pathname, setPathname] = useState(() => window.location.pathname.replace(/\/+$/, '') || '/');
+    const [isPageNavigating, setIsPageNavigating] = useState(false);
     const userSheet = useUserSheet();
     const { dismissToast, showToast, toast } = useToast();
+    useEffect(() => {
+        const syncPathname = () => setPathname(window.location.pathname.replace(/\/+$/, '') || '/');
+        window.addEventListener('popstate', syncPathname);
+        return () => window.removeEventListener('popstate', syncPathname);
+    }, []);
+    const navigate = useCallback((nextPathname: string) => {
+        if (nextPathname === pathname) return;
+        setIsPageNavigating(true);
+        window.setTimeout(() => {
+            window.history.pushState({}, '', nextPathname);
+            setPathname(nextPathname);
+            window.setTimeout(() => setIsPageNavigating(false), 180);
+        }, 120);
+    }, [pathname]);
     const resetPlayerInputs = useCallback(() => {
         handleCancelEdit();
         setManualInputError('');
@@ -618,6 +646,20 @@ const MatchApp = ({ authMode, csrfToken, logout, user }: MatchAppProps) => {
         }
     };
 
+    if (pathname === '/scrims') {
+        return (
+            <MotionConfig reducedMotion="user">
+                <ScrimManager
+                    csrfToken={csrfToken}
+                    players={players}
+                    userId={user.id}
+                    onClose={() => navigate('/')}
+                />
+                <AnimatePresence>{isPageNavigating && <PageLoadingBar />}</AnimatePresence>
+            </MotionConfig>
+        );
+    }
+
     return (
         <MotionConfig reducedMotion="user">
         <div className="min-h-screen bg-surface text-slate-200 font-sans">
@@ -634,6 +676,7 @@ const MatchApp = ({ authMode, csrfToken, logout, user }: MatchAppProps) => {
                 isUserSheetOpen={userSheet.isOpen}
                 onLogout={() => void handleLogout()}
                 onOpenGuide={handleToggleGuide}
+                onOpenScrims={() => navigate('/scrims')}
                 onOpenUserSheet={() => {
                     setSwapSource(null);
                     userSheet.open();
@@ -806,6 +849,7 @@ const MatchApp = ({ authMode, csrfToken, logout, user }: MatchAppProps) => {
                     <AppToast toast={toast} onDismiss={dismissToast} />
                 )}
             </AnimatePresence>
+            <AnimatePresence>{isPageNavigating && <PageLoadingBar />}</AnimatePresence>
         </div>
         </MotionConfig>
     );

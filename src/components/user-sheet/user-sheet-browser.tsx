@@ -4,7 +4,6 @@ import {
     Pencil,
     Plus,
     Search,
-    UserRound,
     X,
 } from 'lucide-react';
 import {
@@ -12,6 +11,7 @@ import {
     type UserSheetEntry,
     type UserSheetSnapshot,
 } from '../../utils/user-sheet';
+import { DouMascot } from '../common/dou-mascot';
 import { UserSheetEntryView } from './user-sheet-entry-view';
 
 interface UserSheetBrowserProps {
@@ -112,9 +112,10 @@ export function UserSheetBrowser({
                 </div>
                 <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto p-2">
                     {filteredEntries.length === 0 ? (
-                        <p className="px-3 py-8 text-center text-xs leading-relaxed text-slate-600">
-                            {entries.length === 0 ? '저장된 유저가 없습니다. 유저 추가를 눌러 등록해 주세요.' : '검색 결과가 없습니다.'}
-                        </p>
+                        <div className="flex flex-col items-center px-3 py-8 text-center text-xs leading-relaxed text-slate-600">
+                            <DouMascot variant={entries.length === 0 ? 'empty' : 'search'} size={64} className="mb-3 opacity-80" decorative />
+                            <p>{entries.length === 0 ? '저장된 유저가 없습니다. 유저 추가를 눌러 등록해 주세요.' : '검색 결과가 없습니다.'}</p>
+                        </div>
                     ) : filteredEntries.map(entry => {
                         const isParticipant = participantBattleTags.has(
                             normalizeUserSheetBattleTag(entry.battleTag),
@@ -181,7 +182,7 @@ export function UserSheetBrowser({
                     />
                 ) : (
                     <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
-                        <UserRound size={32} className="mb-3 text-slate-700" aria-hidden="true" />
+                        <DouMascot variant="search" size={96} className="mb-3 opacity-80" decorative />
                         <p className="text-sm font-medium text-slate-400">조회할 유저를 선택해 주세요</p>
                         <p className="mt-1 text-xs text-slate-600">유저를 선택하면 상세 정보에서 바로 수정할 수 있습니다.</p>
                     </div>

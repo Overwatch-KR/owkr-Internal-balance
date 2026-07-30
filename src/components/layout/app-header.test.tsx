@@ -11,6 +11,7 @@ const renderHeader = (authMode: 'discord' | 'local'): string => (
             isUserSheetOpen={false}
             onLogout={vi.fn()}
             onOpenGuide={vi.fn()}
+            onOpenScrims={vi.fn()}
             onOpenUserSheet={vi.fn()}
             userName="테스트 관리자"
             userSheetHasError={false}
