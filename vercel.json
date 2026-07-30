@@ -11,10 +11,6 @@
     {
       "source": "/participate/:token",
       "destination": "/index.html"
-    },
-    {
-      "source": "/discord-login-policy",
-      "destination": "/index.html"
     }
   ]
 }
