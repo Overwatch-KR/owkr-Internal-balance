@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+    lazy,
+    Suspense,
+    useCallback,
+    useEffect,
+    useMemo,
+    useState,
+} from 'react';
 import { AnimatePresence } from 'framer-motion';
 import {
     ArrowLeft,
@@ -27,6 +34,14 @@ import { Skeleton } from '../common/skeleton';
 import { HeroPickerModal } from './hero-picker-modal';
 import { RandomBanModal } from './random-ban-modal';
 import { ScrimDateTimePicker } from './scrim-datetime-picker';
+import type { HeroDemandChartDatum } from './scrim-result-charts';
+
+const HeroDemandChart = lazy(() => import('./scrim-result-charts').then(module => ({
+    default: module.HeroDemandChart,
+})));
+const SatisfactionCharts = lazy(() => import('./scrim-result-charts').then(module => ({
+    default: module.SatisfactionCharts,
+})));
 
 interface ScrimManagerProps {
     csrfToken: string;
@@ -63,15 +78,12 @@ const toRosterSnapshot = (players: Player[]) => players.slice(0, 10).map(player 
 
 const ScrimRecordsSkeleton = () => (
     <div className="space-y-2" role="status" aria-label="내전 기록을 불러오는 중">
-        <DouMascot variant="loading" size={64} className="mx-auto animate-pulse" decorative />
-        <div className="pt-2">
-            {[0, 1, 2].map(index => (
-                <div key={index} className="mb-2 rounded-xl bg-slate-900 p-3">
-                    <Skeleton className="h-4 w-4/5" />
-                    <Skeleton className="mt-2 h-3 w-3/5" />
-                </div>
-            ))}
-        </div>
+        {[0, 1, 2].map(index => (
+            <div key={index} className="rounded-xl bg-slate-900 p-3">
+                <Skeleton className="h-4 w-4/5" />
+                <Skeleton className="mt-2 h-3 w-3/5" />
+            </div>
+        ))}
     </div>
 );
 
@@ -206,27 +218,12 @@ function OperationsTab({ onAction, onCopy, scrim }: OperationsTabProps) {
     );
 }
 
-function HeroResultCard({ count, hero, maxVotes }: VoteCount & { maxVotes: number }) {
-    const percentage = maxVotes > 0 ? Math.max(8, (count / maxVotes) * 100) : 0;
-    return (
-        <div className="relative overflow-hidden rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-            <span
-                className="absolute inset-y-0 left-0 bg-cyan-400/8"
-                style={{ width: `${percentage}%` }}
-                aria-hidden="true"
-            />
-            <div className="relative flex items-center gap-3">
-                <img
-                    src={`/hero/${hero.role}/${hero.id}.png`}
-                    alt=""
-                    className="h-11 w-11 rounded-lg bg-slate-800 object-cover"
-                />
-                <strong className="min-w-0 flex-1 truncate text-sm text-white">{hero.name}</strong>
-                <span className="text-sm font-semibold text-cyan-200">{count}표</span>
-            </div>
-        </div>
-    );
-}
+const ChartSkeleton = () => (
+    <div className="space-y-3" role="status" aria-label="결과 그래프를 불러오는 중">
+        <Skeleton className="h-4 w-36" />
+        <Skeleton className="h-64 w-full rounded-2xl" />
+    </div>
+);
 
 interface BanTabProps {
     onOpenFinalPicker: () => void;
@@ -252,7 +249,14 @@ function BanTab({
         .filter((hero): hero is Hero => Boolean(hero));
     const hasUnresolvedTie = Boolean(decision?.hasTie && finalHeroes.length < 2);
     const canResolveRandomly = new Set(voteCounts.map(result => result.hero.role)).size >= 2;
-    const maxVotes = voteCounts[0]?.count ?? 0;
+    const heroDemandData = useMemo<HeroDemandChartDatum[]>(
+        () => voteCounts.map(result => ({
+            count: result.count,
+            name: result.hero.name,
+            role: result.hero.role,
+        })),
+        [voteCounts],
+    );
 
     return (
         <section className="space-y-5" role="tabpanel" id="scrim-panel-ban">
@@ -277,20 +281,19 @@ function BanTab({
                     </div>
                 </div>
 
-                <div className="mt-5 grid gap-2 sm:grid-cols-2">
-                    {voteCounts.slice(0, 6).map(result => (
-                        <HeroResultCard
-                            key={result.hero.id}
-                            {...result}
-                            maxVotes={maxVotes}
-                        />
-                    ))}
-                </div>
-                {voteCounts.length === 0 ? (
+                {heroDemandData.length > 0 ? (
+                    <div className="mt-5">
+                        <h3 className="mb-1 text-sm font-semibold text-white">영웅별 밴 수요</h3>
+                        <p className="mb-4 text-xs text-slate-500">막대에 마우스를 올리면 정확한 득표 수를 확인할 수 있습니다.</p>
+                        <Suspense fallback={<ChartSkeleton />}>
+                            <HeroDemandChart data={heroDemandData} />
+                        </Suspense>
+                    </div>
+                ) : (
                     <div className="mt-5 rounded-xl border border-dashed border-slate-700 py-8 text-center text-sm text-slate-500">
                         아직 제출된 투표가 없습니다.
                     </div>
-                ) : null}
+                )}
             </div>
 
             <div className="card">
@@ -398,34 +401,56 @@ function SatisfactionTab({
     scrim,
 }: SatisfactionTabProps) {
     return (
-        <section className="card" role="tabpanel" id="scrim-panel-satisfaction">
-            <h2 className="text-lg font-semibold text-white">만족도 응답</h2>
-            <p className="mt-2 text-sm">
-                총 {scrim.satisfactionResponses.length}건 · 평균 {satisfactionAverage.toFixed(1)}점
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                {satisfactionScores.map((count, index) => (
-                    <span key={index} className="rounded bg-slate-800 px-2 py-1">{index + 1}점 {count}건</span>
-                ))}
-            </div>
-            <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-300">
-                {Object.entries(disappointmentCounts).map(([item, count]) => (
-                    <span key={item} className="rounded bg-slate-800 px-2 py-1">{item} {count}회</span>
-                ))}
-            </div>
-            <div className="mt-4 space-y-2">
-                {scrim.satisfactionResponses.map((response, index) => (
-                    <div key={`${response.submittedAt}-${index}`} className="rounded-lg bg-slate-900 p-3 text-sm">
-                        <span className="font-semibold text-amber-200">{response.score}점</span>
-                        <span className="ml-3 text-slate-400">{response.disappointments.join(', ') || '아쉬운 점 없음'}</span>
-                        {response.otherOpinion ? <p className="mt-1 text-slate-300">기타: {response.otherOpinion}</p> : null}
+        <section className="space-y-5" role="tabpanel" id="scrim-panel-satisfaction">
+            <div className="card">
+                <h2 className="text-lg font-semibold text-white">만족도 결과</h2>
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                    <div className="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
+                        <p className="text-xs text-slate-500">총 응답</p>
+                        <strong className="mt-1 block text-2xl text-white">
+                            {scrim.satisfactionResponses.length}
+                            <span className="ml-1 text-sm font-medium text-slate-400">건</span>
+                        </strong>
                     </div>
-                ))}
+                    <div className="rounded-2xl border border-amber-300/15 bg-amber-300/5 p-4">
+                        <p className="text-xs text-amber-100/60">평균 만족도</p>
+                        <strong className="mt-1 block text-2xl text-amber-200">
+                            {scrim.satisfactionResponses.length > 0
+                                ? satisfactionAverage.toFixed(1)
+                                : '-'}
+                            <span className="ml-1 text-sm font-medium text-amber-100/60">/ 5</span>
+                        </strong>
+                    </div>
+                </div>
+                {scrim.satisfactionResponses.length > 0 ? (
+                    <div className="mt-5">
+                        <Suspense fallback={<ChartSkeleton />}>
+                            <SatisfactionCharts
+                                scoreCounts={satisfactionScores}
+                                disappointmentCounts={disappointmentCounts}
+                            />
+                        </Suspense>
+                    </div>
+                ) : (
+                    <p className="mt-6 rounded-xl border border-dashed border-slate-700 py-8 text-center text-sm text-slate-500">
+                        아직 제출된 만족도 응답이 없습니다.
+                    </p>
+                )}
             </div>
-            {scrim.satisfactionResponses.length === 0 ? (
-                <p className="mt-6 rounded-xl border border-dashed border-slate-700 py-8 text-center text-sm text-slate-500">
-                    아직 제출된 만족도 응답이 없습니다.
-                </p>
+            {scrim.satisfactionResponses.length > 0 ? (
+                <div className="card">
+                    <h2 className="text-lg font-semibold text-white">개별 응답</h2>
+                    <p className="mt-1 text-sm text-slate-400">응답자를 특정할 수 있는 정보는 저장되지 않습니다.</p>
+                    <div className="mt-4 space-y-2">
+                        {scrim.satisfactionResponses.map((response, index) => (
+                            <div key={`${response.submittedAt}-${index}`} className="rounded-xl bg-slate-900 p-3 text-sm">
+                                <span className="font-semibold text-amber-200">{response.score}점</span>
+                                <span className="ml-3 text-slate-400">{response.disappointments.join(', ') || '아쉬운 점 없음'}</span>
+                                {response.otherOpinion ? <p className="mt-1 text-slate-300">기타: {response.otherOpinion}</p> : null}
+                            </div>
+                        ))}
+                    </div>
+                </div>
             ) : null}
         </section>
     );

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, MessageSquareText, Star } from 'lucide-react';
-import { requestJson, getErrorMessage } from '../../utils/api';
+import { ApiError, requestJson, getErrorMessage } from '../../utils/api';
 import {
     formatScrimLabel,
     formatRemainingDuration,
@@ -14,6 +14,7 @@ import { AppToast } from '../app-toast';
 import { Skeleton } from '../common/skeleton';
 import { DouMascot } from '../common/dou-mascot';
 import { HeroGrid } from './hero-grid';
+import { ParticipationLinkError } from './participation-link-error';
 import { RosterParticipantSelect } from './roster-participant-select';
 
 interface PublicScrimRecord extends ScrimRecord {
@@ -33,8 +34,7 @@ const PublicParticipationSkeleton = () => (
         <Skeleton className="h-12 w-full rounded-xl" />
         <section className="card mt-5">
             <div className="mx-auto max-w-xl text-center">
-                <DouMascot variant="loading" size={88} className="mx-auto animate-pulse" decorative />
-                <Skeleton className="mx-auto mt-4 h-7 w-52" />
+                <Skeleton className="mx-auto h-7 w-52" />
                 <Skeleton className="mx-auto mt-3 h-4 w-64 max-w-full" />
                 <div className="mt-8 flex justify-center gap-3">
                     {[0, 1, 2, 3, 4].map(index => (
@@ -59,6 +59,7 @@ export function PublicParticipationPage() {
     const [disappointments, setDisappointments] = useState<string[]>([]);
     const [otherOpinion, setOtherOpinion] = useState('');
     const [error, setError] = useState('');
+    const [isUnavailableLink, setIsUnavailableLink] = useState(false);
     const [now, setNow] = useState(() => Date.now());
     const serverClockOffsetRef = useRef(0);
     const { dismissToast, showToast, toast } = useToast();
@@ -69,9 +70,11 @@ export function PublicParticipationPage() {
             setNow(next.serverNow);
             setData(next);
             setError('');
+            setIsUnavailableLink(false);
         } catch (loadError) {
             setData(null);
             setError(getErrorMessage(loadError, '참여 링크를 불러오지 못했습니다.'));
+            setIsUnavailableLink(loadError instanceof ApiError && loadError.status === 404);
         } finally {
             setIsLoading(false);
         }
@@ -125,30 +128,7 @@ export function PublicParticipationPage() {
     };
     const toggleDisappointment = (item: string) => setDisappointments(current => current.includes(item) ? current.filter(value => value !== item) : [...current, item]);
     if (isLoading) return <PublicParticipationSkeleton />;
-    if (error && !data) {
-        return (
-            <main className="flex min-h-screen items-center justify-center bg-surface p-5 text-slate-200">
-                <motion.section
-                    initial={{ opacity: 0, y: 16, scale: 0.98 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    transition={{ duration: 0.28 }}
-                    className="w-full max-w-md overflow-hidden rounded-3xl border border-slate-800 bg-surface-elevated p-7 text-center shadow-2xl shadow-black/30"
-                >
-                    <DouMascot
-                        variant="link-expired"
-                        size="clamp(156px, 42vw, 208px)"
-                        className="mx-auto"
-                        decorative
-                    />
-                    <h1 className="mt-5 text-xl font-bold text-white">유효하지 않거나 비활성화된 참여 링크입니다.</h1>
-                    <p className="mt-3 leading-6 text-slate-400">링크를 다시 확인하거나 관리자에게 새로운 링크를 요청해 주세요.</p>
-                    <div role="alert" className="mt-5 rounded-xl border border-rose-400/15 bg-rose-400/5 px-4 py-3 text-left text-sm text-rose-200">
-                        {error}
-                    </div>
-                </motion.section>
-            </main>
-        );
-    }
+    if (error && !data) return <ParticipationLinkError error={error} isUnavailable={isUnavailableLink} />;
     const isVoteLink = data?.kind === 'vote';
     return (
         <main className="mx-auto min-h-screen max-w-3xl p-4 py-8 text-slate-200 md:p-8">
