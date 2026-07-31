@@ -313,24 +313,28 @@ export const useRosterManagement = ({
             return;
         }
         const { players, failedLines, avoidedRoleWarnings } = parseMultipleLines(pasteText);
-        if (avoidedRoleWarnings.length > 0) {
-            setIsInputCollapsed(false);
-            return;
-        }
+        const warningLines = avoidedRoleWarnings.map(warning => (
+            [
+                warning.discordName,
+                warning.playerName,
+                `비선호 역할 ${warning.avoidedRoleCount}개`,
+            ].filter(Boolean).join(' · ')
+        ));
+        const importFailedLines = [...new Set([...failedLines, ...warningLines])];
         if (players.length === 0) {
-            if (failedLines.length > 0) {
-                setFailedParses(previous => [...new Set([...previous, ...failedLines])]);
+            if (importFailedLines.length > 0) {
+                setFailedParses(previous => [...new Set([...previous, ...importFailedLines])]);
             }
             setIsInputCollapsed(false);
             showDetailedError('읽어낸 플레이어가 없습니다.', {
                 title: 'Discord 명단을 해석하지 못했습니다',
                 description: '붙여넣은 내용에서 올바른 배틀태그와 세 역할 티어를 찾지 못했습니다.',
-                items: failedLines,
+                items: importFailedLines,
                 hint: 'Player#1234 다3/플2/마5 형식이 포함되어 있는지 확인해 주세요.',
             });
             return;
         }
-        requestRosterIdentityReview(players, failedLines);
+        requestRosterIdentityReview(players, importFailedLines);
     };
 
     return {

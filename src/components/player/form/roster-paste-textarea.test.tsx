@@ -37,4 +37,25 @@ describe('RosterPasteTextarea', () => {
         expect(markup).toContain('aria-label="다음 비선호 오류로 이동"');
         expect(markup).not.toContain('비선호 포지션을 한 개만 남겨 주세요');
     });
+
+    it('오류가 한 개여도 해당 위치로 다시 이동할 수 있다', () => {
+        const value = 'Only#1234 다3? / 플2? / 골1';
+        const markup = renderToStaticMarkup(
+            <RosterPasteTextarea
+                isValidationPending={false}
+                value={value}
+                onChange={vi.fn()}
+                warnings={[{
+                    playerName: 'Only#1234',
+                    discordName: '한 명',
+                    avoidedRoleCount: 2,
+                    avoidedRoles: ['TANK', 'DPS'],
+                }]}
+            />,
+        );
+
+        expect(markup).toContain('오류 1/1');
+        expect(markup).toContain('오류 위치로 이동');
+        expect(markup).not.toContain('disabled=""');
+    });
 });

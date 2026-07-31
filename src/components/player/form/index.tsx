@@ -60,7 +60,7 @@ interface RosterImportActionProps {
 }
 
 /**
- * @description 입력 검사 중이거나 비선호 역할 중복이 있으면 명단 가져오기를 막는다.
+ * @description 입력 검사가 끝나면 오류 항목이 섞여 있어도 정상 명단을 다음 확인 단계로 보낸다.
  */
 export const RosterImportAction = ({
     hasWarnings,
@@ -68,7 +68,7 @@ export const RosterImportAction = ({
     isChecking,
     onImport,
 }: RosterImportActionProps) => {
-    const isDisabled = !hasPasteText || isChecking || hasWarnings;
+    const isDisabled = !hasPasteText || isChecking;
 
     return (
         <button
@@ -78,7 +78,11 @@ export const RosterImportAction = ({
             aria-describedby={hasWarnings ? 'roster-paste-error-navigation' : undefined}
             className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-40"
         >
-            {isChecking ? '입력 확인 중…' : '명단 가져오기'}
+            {isChecking
+                ? '입력 확인 중…'
+                : hasWarnings
+                    ? '정상 항목 계속 가져오기'
+                    : '명단 가져오기'}
         </button>
     );
 };

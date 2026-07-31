@@ -52,6 +52,9 @@ export interface ScrimRecord {
     votes: HeroVote[];
     satisfactionResponses: SatisfactionResponse[];
     finalBanDecision?: BanDecision;
+    adminReview?: string;
+    adminReviewUpdatedAt?: number;
+    adminReviewUpdatedBy?: string;
 }
 
 export type VoteParticipationStatus = 'VOTING_OPEN' | 'VOTING_CLOSED';

@@ -1,6 +1,6 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { UIEvent } from 'react';
-import { AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { AlertCircle, ChevronDown, ChevronUp, LocateFixed } from 'lucide-react';
 import type { AvoidedRoleWarning } from '../../../utils/parser';
 import {
     findAvoidedRoleHighlightRanges,
@@ -195,24 +195,35 @@ const RosterPasteTextarea = ({
                         {currentTarget.warning.avoidedRoles.map(role => ROLE_LABELS[role]).join('·')}
                     </p>
                     <div className="flex shrink-0 items-center gap-0.5">
-                        <button
-                            type="button"
-                            onClick={() => navigateToWarning(-1)}
-                            disabled={navigationTargets.length <= 1}
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-rose-200/70 transition-colors hover:bg-rose-400/10 hover:text-rose-100 disabled:cursor-default disabled:opacity-30"
-                            aria-label="이전 비선호 오류로 이동"
-                        >
-                            <ChevronUp size={15} aria-hidden="true" />
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => navigateToWarning(1)}
-                            disabled={navigationTargets.length <= 1}
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-rose-200/70 transition-colors hover:bg-rose-400/10 hover:text-rose-100 disabled:cursor-default disabled:opacity-30"
-                            aria-label="다음 비선호 오류로 이동"
-                        >
-                            <ChevronDown size={15} aria-hidden="true" />
-                        </button>
+                        {navigationTargets.length === 1 ? (
+                            <button
+                                type="button"
+                                onClick={() => scrollToWarning(0)}
+                                className="inline-flex min-h-7 items-center gap-1 rounded-md px-2 text-[11px] font-medium text-rose-100 transition-colors hover:bg-rose-400/10"
+                            >
+                                <LocateFixed size={13} aria-hidden="true" />
+                                오류 위치로 이동
+                            </button>
+                        ) : (
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={() => navigateToWarning(-1)}
+                                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-rose-200/70 transition-colors hover:bg-rose-400/10 hover:text-rose-100"
+                                    aria-label="이전 비선호 오류로 이동"
+                                >
+                                    <ChevronUp size={15} aria-hidden="true" />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => navigateToWarning(1)}
+                                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-rose-200/70 transition-colors hover:bg-rose-400/10 hover:text-rose-100"
+                                    aria-label="다음 비선호 오류로 이동"
+                                >
+                                    <ChevronDown size={15} aria-hidden="true" />
+                                </button>
+                            </>
+                        )}
                     </div>
                 </div>
             )}

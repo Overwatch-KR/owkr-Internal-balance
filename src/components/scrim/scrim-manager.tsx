@@ -13,9 +13,12 @@ import {
     Dices,
     ExternalLink,
     Link2,
+    NotebookPen,
     Pencil,
+    Save,
     ShieldBan,
     Star,
+    TimerReset,
     Trash2,
 } from 'lucide-react';
 import { HEROES, type Hero } from '../../constants/hero';
@@ -59,13 +62,14 @@ interface VoteCount {
     hero: Hero;
 }
 
-type DetailTab = 'operations' | 'ban' | 'satisfaction';
+type DetailTab = 'operations' | 'ban' | 'satisfaction' | 'review';
 type HeroPickerMode = 'final' | 'used' | null;
 
 const DETAIL_TABS: Array<{ id: DetailTab; label: string; icon: typeof Link2 }> = [
     { id: 'operations', label: '운영 및 링크', icon: Link2 },
     { id: 'ban', label: '영웅 밴', icon: ShieldBan },
     { id: 'satisfaction', label: '만족도 결과', icon: Star },
+    { id: 'review', label: '내전 후기', icon: NotebookPen },
 ];
 
 const heroById = new Map(HEROES.map(hero => [hero.id, hero]));
@@ -110,6 +114,7 @@ interface LinkControlCardProps {
     link?: PublicParticipationLink;
     onAction: (action: string, payload?: Record<string, unknown>) => void;
     onCopy: (kind: PublicParticipationKind) => void;
+    satisfactionExpiresAt?: number;
 }
 
 function LinkControlCard({
@@ -117,6 +122,7 @@ function LinkControlCard({
     link,
     onAction,
     onCopy,
+    satisfactionExpiresAt,
 }: LinkControlCardProps) {
     const title = kind === 'vote' ? '영웅 밴 투표 링크' : '만족도 조사 링크';
     const href = link ? `${window.location.origin}/participate/${link.token}` : '';
@@ -151,6 +157,24 @@ function LinkControlCard({
                 >
                     {link ? '링크 다시 활성화' : '링크 생성'}
                 </button>
+            ) : null}
+
+            {kind === 'satisfaction' && satisfactionExpiresAt ? (
+                <div className="mt-4 rounded-lg border border-slate-800 bg-slate-900/70 px-3 py-2.5">
+                    <p className="text-xs text-slate-500">현재 응답 마감</p>
+                    <p className="mt-0.5 text-sm font-medium text-slate-200">
+                        {new Date(satisfactionExpiresAt).toLocaleString('ko-KR', {
+                            timeZone: 'Asia/Seoul',
+                        })}
+                    </p>
+                    <button
+                        type="button"
+                        className="btn-ghost mt-3 w-full"
+                        onClick={() => onAction('extendSatisfaction')}
+                    >
+                        <TimerReset size={15} className="mr-1 inline" />응답 기간 24시간 연장
+                    </button>
+                </div>
             ) : null}
 
             {link?.active ? (
@@ -202,6 +226,7 @@ function OperationsTab({ onAction, onCopy, scrim }: OperationsTabProps) {
                 <LinkControlCard
                     kind="satisfaction"
                     link={scrim.publicLinks?.satisfaction}
+                    satisfactionExpiresAt={scrim.satisfactionExpiresAt}
                     onAction={onAction}
                     onCopy={onCopy}
                 />
@@ -446,7 +471,7 @@ function SatisfactionTab({
                             <div key={`${response.submittedAt}-${index}`} className="rounded-xl bg-slate-900 p-3 text-sm">
                                 <span className="font-semibold text-amber-200">{response.score}점</span>
                                 <span className="ml-3 text-slate-400">{response.disappointments.join(', ') || '아쉬운 점 없음'}</span>
-                                {response.otherOpinion ? <p className="mt-1 text-slate-300">기타: {response.otherOpinion}</p> : null}
+                                {response.otherOpinion ? <p className="mt-1 text-slate-300">의견: {response.otherOpinion}</p> : null}
                             </div>
                         ))}
                     </div>
@@ -456,8 +481,83 @@ function SatisfactionTab({
     );
 }
 
+interface ReviewTabProps {
+    onSave: (adminReview: string) => Promise<void>;
+    scrim: ScrimRecord;
+}
+
 /**
- * @description 전용 페이지에서 내전 기록과 공개 링크, 밴 및 만족도 결과를 탭으로 관리한다.
+ * @description 관리자가 내전의 운영 특이점과 후기를 작성하고 수정 이력을 확인하게 한다.
+ */
+function ReviewTab({ onSave, scrim }: ReviewTabProps) {
+    const [draft, setDraft] = useState(scrim.adminReview ?? '');
+    const [isSaving, setIsSaving] = useState(false);
+    const savedReview = scrim.adminReview ?? '';
+    const isDirty = draft.trim() !== savedReview;
+
+    useEffect(() => {
+        setDraft(scrim.adminReview ?? '');
+    }, [scrim.adminReview, scrim.id]);
+
+    const save = async () => {
+        setIsSaving(true);
+        try {
+            await onSave(draft);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    return (
+        <section className="card" role="tabpanel" id="scrim-panel-review">
+            <div className="flex items-start gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-400/10 text-violet-200">
+                    <NotebookPen size={19} aria-hidden="true" />
+                </span>
+                <div>
+                    <h2 className="text-lg font-semibold text-white">내전 후기 및 운영 기록</h2>
+                    <p className="mt-1 text-sm text-slate-400">
+                        팀 구성, 진행 중 특이점, 다음 내전에서 참고할 내용을 관리자끼리 기록합니다.
+                    </p>
+                </div>
+            </div>
+            <label className="mt-5 block">
+                <span className="mb-2 block text-sm font-medium text-slate-200">관리자 기록</span>
+                <div className="rounded-xl border border-slate-700/70 bg-slate-950/70 p-1.5 transition focus-within:border-violet-400/70 focus-within:ring-2 focus-within:ring-violet-400/15">
+                    <textarea
+                        className="min-h-64 w-full resize-y rounded-lg bg-transparent px-3 py-3 text-sm leading-relaxed text-white outline-none placeholder:text-slate-600"
+                        value={draft}
+                        onChange={event => setDraft(event.target.value)}
+                        maxLength={4_000}
+                        placeholder="예: 2세트 이후 역할 변경, 진행 지연 원인, 다음 내전에서 유지하거나 바꿀 점"
+                    />
+                    <div className="flex items-center justify-between px-2 pb-1 text-xs text-slate-600">
+                        <span>
+                            {scrim.adminReviewUpdatedAt && scrim.adminReviewUpdatedBy
+                                ? `마지막 수정 · ${scrim.adminReviewUpdatedBy} · ${new Date(scrim.adminReviewUpdatedAt).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`
+                                : '아직 작성된 기록이 없습니다.'}
+                        </span>
+                        <span>{draft.length}/4000</span>
+                    </div>
+                </div>
+            </label>
+            <div className="mt-4 flex justify-end">
+                <button
+                    type="button"
+                    className="btn-primary inline-flex items-center gap-2 disabled:opacity-40"
+                    disabled={!isDirty || isSaving}
+                    onClick={() => void save()}
+                >
+                    <Save size={15} aria-hidden="true" />
+                    {isSaving ? '저장 중…' : '후기 저장'}
+                </button>
+            </div>
+        </section>
+    );
+}
+
+/**
+ * @description 전용 페이지에서 내전 기록과 공개 링크, 밴, 만족도 결과 및 운영 후기를 탭으로 관리한다.
  */
 export function ScrimManager({ csrfToken, players, userId, onClose }: ScrimManagerProps) {
     const [scrims, setScrims] = useState<ScrimRecord[]>([]);
@@ -569,6 +669,8 @@ export function ScrimManager({ csrfToken, players, userId, onClose }: ScrimManag
                     : '영웅 밴 투표 링크를 비활성화했습니다.',
                 addUsedBans: '사용된 밴 영웅을 저장했습니다.',
                 confirmFinalBans: '최종 밴 영웅을 확정했습니다.',
+                extendSatisfaction: '만족도 응답 기간을 24시간 연장했습니다.',
+                updateReview: '내전 후기를 저장했습니다.',
             };
             showToast('success', messages[action] ?? '변경 사항을 저장했습니다.');
         } catch (error) {
@@ -767,12 +869,17 @@ export function ScrimManager({ csrfToken, players, userId, onClose }: ScrimManag
                                     onOpenRandom={() => setIsRandomModalOpen(true)}
                                     onOpenUsedPicker={() => setHeroPickerMode('used')}
                                 />
-                            ) : (
+                            ) : activeTab === 'satisfaction' ? (
                                 <SatisfactionTab
                                     scrim={selected}
                                     satisfactionAverage={satisfactionAverage}
                                     satisfactionScores={satisfactionScores}
                                     disappointmentCounts={disappointmentCounts}
+                                />
+                            ) : (
+                                <ReviewTab
+                                    scrim={selected}
+                                    onSave={adminReview => call('updateReview', { adminReview })}
                                 />
                             )}
                         </section>
