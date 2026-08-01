@@ -50,6 +50,13 @@ interface Candidate {
 }
 
 /**
+ * @description 팀 후보 평가에서 선택적으로 제외할 운영 조건.
+ */
+export interface BalanceOptions {
+    ignorePreferences?: boolean;
+}
+
+/**
  * @description 순수 밸런싱 계산이 반환하는 최종 결과와 대안 목록.
  */
 export interface BalanceResult {
@@ -184,10 +191,16 @@ const compareTankSafeguard = (candidate: Candidate, existing: Candidate): number
 };
 
 /**
- * @description 후보를 선호 위반·탱커 안전장치·비선호·미배치·종합 점수 순으로 비교한다.
+ * @description 설정에 따라 선호 위반을 제외하고 탱커 안전장치·비선호·미배치·종합 점수 순으로 후보를 비교한다.
  */
-const compareCandidates = (candidate: Candidate, existing: Candidate): number =>
-    candidate.preferenceViolations - existing.preferenceViolations
+const compareCandidates = (
+    candidate: Candidate,
+    existing: Candidate,
+    options: BalanceOptions,
+): number =>
+    (options.ignorePreferences
+        ? 0
+        : candidate.preferenceViolations - existing.preferenceViolations)
     || compareTankSafeguard(candidate, existing)
     || candidate.avoidedAssignments - existing.avoidedAssignments
     || candidate.unrankedAssignments - existing.unrankedAssignments
@@ -197,8 +210,14 @@ const compareCandidates = (candidate: Candidate, existing: Candidate): number =>
 /**
  * @description 정렬된 상위 후보 목록에 새 후보를 삽입한다.
  */
-const insertCandidate = (candidates: Candidate[], candidate: Candidate): void => {
-    const insertAt = candidates.findIndex((existing) => compareCandidates(candidate, existing) < 0);
+const insertCandidate = (
+    candidates: Candidate[],
+    candidate: Candidate,
+    options: BalanceOptions,
+): void => {
+    const insertAt = candidates.findIndex(
+        (existing) => compareCandidates(candidate, existing, options) < 0,
+    );
     candidates.splice(insertAt === -1 ? candidates.length : insertAt, 0, candidate);
     if (candidates.length > QUALITY_POOL_SIZE) candidates.pop();
 };
@@ -353,9 +372,12 @@ export const swapMatchResultPlayers = (
 };
 
 /**
- * @description 10명을 가능한 모든 팀과 역할 조합으로 평가해 최적 결과를 반환한다.
+ * @description 10명을 가능한 모든 팀과 역할 조합으로 평가하고 운영 옵션을 반영해 최적 결과를 반환한다.
  */
-export const balancePlayers = (players: Player[]): BalanceResult => {
+export const balancePlayers = (
+    players: Player[],
+    options: BalanceOptions = {},
+): BalanceResult => {
     if (players.length !== PLAYER_COUNT) {
         throw new Error(`플레이어가 ${PLAYER_COUNT}명이어야 합니다. (현재: ${players.length}명)`);
     }
@@ -408,7 +430,7 @@ export const balancePlayers = (players: Player[]): BalanceResult => {
                         + teamVariance * SCORE_WEIGHTS.teamVariance,
                     realDiff,
                     tankDiff,
-                });
+                }, options);
             }
         }
     }

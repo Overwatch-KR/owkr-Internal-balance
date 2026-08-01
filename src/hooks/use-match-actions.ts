@@ -1,6 +1,9 @@
 import type { Dispatch, SetStateAction } from 'react';
 import { SAMPLE_ROSTER } from '../constants';
-import { swapMatchResultPlayers } from '../utils/balance';
+import {
+    swapMatchResultPlayers,
+    type BalanceOptions,
+} from '../utils/balance';
 import { parseMultipleLines } from '../utils/parser';
 import { getErrorMessage } from '../utils/api';
 import type { MatchResultData, Player, Role, SwapSource } from '../types';
@@ -30,7 +33,7 @@ interface ToastAction {
 }
 
 interface UseMatchActionsOptions {
-    balanceTeams: (players: Player[]) => Promise<void>;
+    balanceTeams: (players: Player[], options?: BalanceOptions) => Promise<void>;
     match: MatchActionState;
     playerInput: PlayerInputActionState;
     requestRosterIdentityReview: (players: Player[], failedLines: string[]) => void;
@@ -53,7 +56,7 @@ export const useMatchActions = ({
     showToast,
     swapSource,
 }: UseMatchActionsOptions) => {
-    const handleRunMatching = async (): Promise<boolean> => {
+    const handleRunMatching = async (options: BalanceOptions = {}): Promise<boolean> => {
         const participants = match.players.slice(0, 10);
         if (participants.length !== 10) {
             showToast('error', '팀을 짜려면 참가자 10명이 필요합니다.');
@@ -62,7 +65,7 @@ export const useMatchActions = ({
         match.setAlternatives([]);
         setSwapSource(null);
         try {
-            await balanceTeams(participants);
+            await balanceTeams(participants, options);
             return true;
         } catch (error) {
             const errorMessage = getErrorMessage(error, '매칭 중 오류가 발생했습니다.');

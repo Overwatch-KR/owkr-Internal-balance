@@ -121,6 +121,29 @@ describe('balancePlayers', () => {
         expect(balancePlayers(players)).toEqual(balancePlayers(players));
     });
 
+    it('선호 무시 옵션을 켜면 선호 위반 수를 후보 우선순위에서 제외한다', () => {
+        const roles: Role[] = [
+            'TANK',
+            'TANK',
+            'DPS',
+            'DPS',
+            'DPS',
+            'DPS',
+            'SUPPORT',
+            'SUPPORT',
+            'SUPPORT',
+            'SUPPORT',
+        ];
+        const players = roles.map((role, index) => createPlayer(index + 1, role));
+
+        const preferredResult = balancePlayers(players).result;
+        const ignoredResult = balancePlayers(players, { ignorePreferences: true }).result;
+
+        expect(preferredResult.metrics?.preferenceViolations).toBe(0);
+        expect(ignoredResult.metrics?.preferenceViolations).toBeGreaterThan(0);
+        expect(ignoredResult).not.toEqual(preferredResult);
+    });
+
     it('탱커 차이가 600점을 넘으면 비선호 배정을 허용해 안전 범위로 줄인다', () => {
         const result = balancePlayers(createTankSafeguardPlayers(3000)).result;
 

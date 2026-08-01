@@ -77,6 +77,7 @@ const MatchApp = ({ authMode, csrfToken, logout, user }: MatchAppProps) => {
 
     const [swapSource, setSwapSource] = useState<SwapSource | null>(null);
     const [showAllRanks, setShowAllRanks] = useState(false);
+    const [ignorePreferences, setIgnorePreferences] = useState(false);
     const [isLoggingOut, setIsLoggingOut] = useState(false);
     const [errorDetails, setErrorDetails] = useState<ErrorDetails | null>(null);
     const [pathname, setPathname] = useState(() => window.location.pathname.replace(/\/+$/, '') || '/');
@@ -374,12 +375,14 @@ const MatchApp = ({ authMode, csrfToken, logout, user }: MatchAppProps) => {
 
                         <MatchResultPanel
                             alternatives={alternatives}
+                            ignorePreferences={ignorePreferences}
                             isBalancing={isBalancing}
                             isReady={isReady}
                             isResultStale={isResultStale}
                             onCancelSwap={() => setSwapSource(null)}
                             onClearResult={handleClearResult}
-                            onRunMatching={() => void handleRunMatching()}
+                            onIgnorePreferencesChange={setIgnorePreferences}
+                            onRunMatching={() => void handleRunMatching({ ignorePreferences })}
                             onSelectAlternative={handleSelectAlternative}
                             onShowAllRanksChange={setShowAllRanks}
                             onSlotClick={handleSlotClick}

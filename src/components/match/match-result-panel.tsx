@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { Loader2, RefreshCcw, Shuffle } from 'lucide-react';
+import { Loader2, RefreshCcw, Shuffle, StarOff } from 'lucide-react';
 import type { MatchResultData, Role, SwapSource } from '../../types';
 import type { UserSheetEntry } from '../../utils/user-sheet';
 import { DouMascot } from '../common/dou-mascot';
@@ -7,11 +7,13 @@ import MatchResult from './result';
 
 interface MatchResultPanelProps {
     alternatives: MatchResultData[];
+    ignorePreferences: boolean;
     isBalancing: boolean;
     isReady: boolean;
     isResultStale: boolean;
     onCancelSwap: () => void;
     onClearResult: () => void;
+    onIgnorePreferencesChange: (ignore: boolean) => void;
     onRunMatching: () => void;
     onSelectAlternative: (index: number) => void;
     onShowAllRanksChange: (show: boolean) => void;
@@ -28,11 +30,13 @@ interface MatchResultPanelProps {
  */
 export function MatchResultPanel({
     alternatives,
+    ignorePreferences,
     isBalancing,
     isReady,
     isResultStale,
     onCancelSwap,
     onClearResult,
+    onIgnorePreferencesChange,
     onRunMatching,
     onSelectAlternative,
     onShowAllRanksChange,
@@ -47,7 +51,22 @@ export function MatchResultPanel({
         <section className="grid min-w-0 content-start gap-6" aria-labelledby="match-result-title">
             <div className="flex min-h-11 flex-wrap items-center justify-between gap-3">
                 <h2 id="match-result-title" className="text-lg font-semibold text-white">팀 배정 결과</h2>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap justify-end gap-2">
+                    <button
+                        type="button"
+                        onClick={() => onIgnorePreferencesChange(!ignorePreferences)}
+                        disabled={isBalancing}
+                        aria-pressed={ignorePreferences}
+                        title="선호 역할 위반 수를 후보 평가에서 제외합니다. 비선호 역할은 계속 피합니다."
+                        className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                            ignorePreferences
+                                ? 'border-amber-400/50 bg-amber-500/10 text-amber-200'
+                                : 'border-slate-700 text-slate-400 hover:border-slate-600 hover:text-slate-200'
+                        }`}
+                    >
+                        <StarOff size={14} aria-hidden="true" />
+                        선호 무시
+                    </button>
                     {result && (
                         <button type="button" onClick={onClearResult} className="btn-ghost flex items-center gap-2 text-sm">
                             <RefreshCcw size={14} aria-hidden="true" />

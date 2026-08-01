@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MatchResultData, Player } from '../types';
-import type { BalanceWorkerResponse } from '../utils/balance';
+import type { BalanceOptions, BalanceWorkerResponse } from '../utils/balance';
 
-interface BalanceTeamsOptions {
+interface BalanceTeamsOptions extends BalanceOptions {
     preserveResult?: MatchResultData;
 }
 
@@ -94,7 +94,10 @@ export const useBalance = (
                 reject(new Error('밸런싱 워커를 실행하지 못했습니다.'));
             };
 
-            worker.postMessage(players);
+            worker.postMessage({
+                players,
+                options: { ignorePreferences: options.ignorePreferences },
+            });
         });
     }, []);
 
