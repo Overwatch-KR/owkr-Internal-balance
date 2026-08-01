@@ -11,7 +11,11 @@ import {
 } from 'lucide-react';
 import { formatRank } from '../../../constants';
 import type { Player } from '../../../types';
-import { reconcilePlayers, type RosterImportMode } from '../../../utils/player';
+import {
+    getDefaultRosterImportMode,
+    reconcilePlayers,
+    type RosterImportMode,
+} from '../../../utils/player';
 import type { UserSheetEntry } from '../../../utils/user-sheet';
 import { cleanUserSheetRank } from '../../../utils/user-sheet';
 import {
@@ -111,7 +115,9 @@ export function RosterIdentityResolver({
     submitError,
 }: RosterIdentityResolverProps) {
     const [drafts, setDrafts] = useState<ResolutionDraft[]>(() => makeDrafts(players, entries));
-    const [mode, setMode] = useState<RosterImportMode>('replace');
+    const [mode, setMode] = useState<RosterImportMode>(() => (
+        getDefaultRosterImportMode(currentPlayers.length, players.length)
+    ));
     const [bulkText, setBulkText] = useState('');
     const [bulkMessage, setBulkMessage] = useState('');
     const entriesById = useMemo(() => new Map(entries.map(entry => [entry.id, entry])), [entries]);
