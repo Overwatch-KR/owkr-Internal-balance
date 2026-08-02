@@ -8,7 +8,12 @@ import {
     getSatisfactionParticipationStatus,
     getVoteParticipationStatus,
 } from '../../utils/scrim';
-import { hasSubmittedSurvey, markSurveyAsSubmitted } from '../../utils/survey-submission';
+import {
+    hasSubmittedSurvey,
+    hasSubmittedVote,
+    markSurveyAsSubmitted,
+    markVoteAsSubmitted,
+} from '../../utils/survey-submission';
 import { SATISFACTION_OPTIONS, type PublicParticipationKind, type ScrimRecord } from '../../types/scrim';
 import { useToast } from '../../hooks/use-toast';
 import { AppToast } from '../app-toast';
@@ -64,6 +69,7 @@ export function PublicParticipationPage() {
     const [isUnavailableLink, setIsUnavailableLink] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [submittedSurveyId, setSubmittedSurveyId] = useState('');
+    const [hasCompletedVote, setHasCompletedVote] = useState(false);
     const [now, setNow] = useState(() => Date.now());
     const serverClockOffsetRef = useRef(0);
     const submitLockRef = useRef(false);
@@ -99,6 +105,10 @@ export function PublicParticipationPage() {
         if (data?.kind !== 'satisfaction' || !scrim || !hasSubmittedSurvey(scrim.id)) return;
         setSubmittedSurveyId(scrim.id);
     }, [data?.kind, scrim]);
+    useEffect(() => {
+        if (data?.kind !== 'vote' || !scrim || !hasSubmittedVote(scrim.id)) return;
+        setHasCompletedVote(true);
+    }, [data?.kind, scrim]);
     const availableRoster = useMemo(() => {
         if (!scrim) return [];
         const submittedIds = new Set(scrim.submittedRosterParticipantIds ?? []);
@@ -128,12 +138,8 @@ export function PublicParticipationPage() {
                 setSubmittedSurveyId(scrim.id);
                 return;
             }
-            showToast(
-                'success',
-                '영웅 밴 투표를 제출했습니다. 제출 후에는 수정할 수 없습니다.',
-            );
-            setParticipantId('');
-            void load();
+            markVoteAsSubmitted(scrim.id);
+            setHasCompletedVote(true);
         } catch (submitError) {
             showToast('error', getErrorMessage(submitError, '제출하지 못했습니다.'));
             void load();
@@ -151,11 +157,11 @@ export function PublicParticipationPage() {
     const isVoteLink = data?.kind === 'vote';
     const surveyId = scrim?.id ?? submittedSurveyId;
     const hasSubmitted = Boolean(
-        !isVoteLink
-        && surveyId
-        && (submittedSurveyId === surveyId || hasSubmittedSurvey(surveyId)),
+        isVoteLink
+            ? hasCompletedVote
+            : surveyId && (submittedSurveyId === surveyId || hasSubmittedSurvey(surveyId)),
     );
-    if (hasSubmitted) return <SurveySubmissionComplete />;
+    if (hasSubmitted) return <SurveySubmissionComplete kind={isVoteLink ? 'vote' : 'satisfaction'} />;
     if (error && !data) return <ParticipationLinkError error={error} isUnavailable={isUnavailableLink} />;
     return (
         <main className="mx-auto min-h-screen max-w-3xl p-4 py-8 text-slate-200 md:p-8">

@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { hasSubmittedSurvey, markSurveyAsSubmitted } from './survey-submission';
+import {
+    hasSubmittedSurvey,
+    hasSubmittedVote,
+    markSurveyAsSubmitted,
+    markVoteAsSubmitted,
+} from './survey-submission';
 
 class MemoryStorage {
     private readonly values = new Map<string, string>();
@@ -63,5 +68,15 @@ describe('survey submission storage', () => {
 
         expect(hasSubmittedSurvey('scrim-42')).toBe(false);
         expect(markSurveyAsSubmitted('scrim-42')).toBe(false);
+    });
+
+    it('stores a successful vote separately from survey completion', () => {
+        const storage = new MemoryStorage();
+        vi.stubGlobal('localStorage', storage);
+
+        expect(markVoteAsSubmitted('scrim-42')).toBe(true);
+        expect(hasSubmittedVote('scrim-42')).toBe(true);
+        expect(hasSubmittedSurvey('scrim-42')).toBe(false);
+        expect(storage.getItem('vote:scrim-42:submitted')).toBe('true');
     });
 });
