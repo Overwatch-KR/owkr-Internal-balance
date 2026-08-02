@@ -21,6 +21,7 @@ import { Skeleton } from '../common/skeleton';
 import { DouMascot } from '../common/dou-mascot';
 import { HeroGrid } from './hero-grid';
 import { ParticipationLinkError } from './participation-link-error';
+import { ParticipationClosed } from './participation-closed';
 import { RosterParticipantSelect } from './roster-participant-select';
 import { SurveySubmissionComplete } from './survey-submission-complete';
 
@@ -163,6 +164,8 @@ export function PublicParticipationPage() {
     );
     if (hasSubmitted) return <SurveySubmissionComplete kind={isVoteLink ? 'vote' : 'satisfaction'} />;
     if (error && !data) return <ParticipationLinkError error={error} isUnavailable={isUnavailableLink} />;
+    if (scrim && isVoteLink && voteStatus === 'VOTING_CLOSED') return <ParticipationClosed kind="vote" />;
+    if (scrim && !isVoteLink && satisfactionStatus === 'SATISFACTION_EXPIRED') return <ParticipationClosed kind="satisfaction" />;
     return (
         <main className="mx-auto min-h-screen max-w-3xl p-4 py-8 text-slate-200 md:p-8">
             <header className="mb-6"><h1 className="text-2xl font-bold text-white">OWKR {isVoteLink ? '영웅 밴 투표' : '내전 만족도 조사'}</h1><p className="mt-1 text-sm text-slate-400">{isVoteLink ? '내전 시작 전, 최대 3명의 영웅을 선택해 주세요.' : '응답은 완전 익명으로 저장됩니다.'}</p></header>
@@ -222,7 +225,7 @@ export function PublicParticipationPage() {
                             </>
                         ) : '익명 응답 제출'}
                     </button>
-                </section> : !isVoteLink && <section className="card"><h2 className="text-lg font-semibold text-white">내전 만족도 조사</h2><p className="mt-2 text-slate-400">{satisfactionStatus === 'SATISFACTION_PENDING' ? '만족도 조사는 내전이 시작된 후 참여할 수 있습니다.' : '만족도 조사 기간이 종료되었습니다. 관리자가 기간을 연장하면 같은 링크로 다시 참여할 수 있습니다.'}</p></section>}
+                </section> : !isVoteLink && <section className="card"><h2 className="text-lg font-semibold text-white">내전 만족도 조사</h2><p className="mt-2 text-slate-400">만족도 조사는 내전이 시작된 후 참여할 수 있습니다.</p></section>}
                 {toast && <AppToast toast={toast} onDismiss={dismissToast} />}
             </div>}
         </main>
