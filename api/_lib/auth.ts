@@ -21,7 +21,7 @@ interface OAuthStatePayload {
 
 const SESSION_COOKIE = 'owkr_session';
 const OAUTH_STATE_COOKIE = 'owkr_oauth_state';
-const SESSION_MAX_AGE_SECONDS = 60 * 60 * 8;
+const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 const OAUTH_STATE_MAX_AGE_SECONDS = 60 * 10;
 const LOCAL_AUTH_CSRF_TOKEN = 'owkr-local-auth-csrf-token';
 const LOCAL_AUTH_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]']);

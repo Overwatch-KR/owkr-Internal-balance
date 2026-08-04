@@ -14,7 +14,7 @@ describe('DiscordLoginPolicyPage', () => {
         expect(markup).toContain('관리자 목록과 대조');
         expect(markup).toContain('권한 범위와 보관');
         expect(markup).toContain('OAuth 액세스 토큰은 저장하지 않습니다');
-        expect(markup).toContain('로그인 세션은 8시간 후');
+        expect(markup).toContain('로그인 세션은 1주일 후');
         expect(markup).toContain('메시지는 조회하지');
     });
 });

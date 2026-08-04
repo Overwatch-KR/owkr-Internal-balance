@@ -1,4 +1,5 @@
 import type { VercelRequest } from '@vercel/node';
+import jwt, { type JwtPayload } from 'jsonwebtoken';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
     createSessionCookie,
@@ -89,10 +90,14 @@ describe('local authentication', () => {
             username: 'discord-admin',
             globalName: '운영자',
         });
+        const sessionToken = cookie.match(/^owkr_session=([^;]+)/)?.[1];
+        const payload = jwt.decode(sessionToken ?? '') as JwtPayload | null;
         const authenticatedRequest = createRequest('localhost:3000', {
             cookie: cookie.split(';', 1)[0] ?? '',
         });
 
+        expect(cookie).toContain('Max-Age=604800');
+        expect((payload?.exp ?? 0) - (payload?.iat ?? 0)).toBe(60 * 60 * 24 * 7);
         expect(getSessionUser(authenticatedRequest)).toMatchObject({
             id: 'discord-user-1',
             username: 'discord-admin',
