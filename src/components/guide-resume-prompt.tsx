@@ -22,7 +22,7 @@ export const GuideResumePrompt = ({
 }: GuideResumePromptProps) => {
     const dialogRef = useRef<HTMLElement>(null);
     const position = getGuideStepPosition(progress.variant, progress.stepId);
-    const guideLabel = progress.variant === 'result' ? '결과 활용 가이드' : '입력 가이드';
+    const guideLabel = progress.variant === 'result' ? '결과 활용 가이드' : '참가자·팀 편성 가이드';
 
     useEffect(() => {
         dialogRef.current?.focus();

@@ -9,6 +9,7 @@ import {
 import { AnimatePresence } from 'framer-motion';
 import {
     ArrowLeft,
+    BookOpen,
     Copy,
     Dices,
     ExternalLink,
@@ -37,6 +38,7 @@ import { Skeleton } from '../common/skeleton';
 import { HeroPickerModal } from './hero-picker-modal';
 import { RandomBanModal } from './random-ban-modal';
 import { ScrimDateTimePicker } from './scrim-datetime-picker';
+import { ScrimManagerGuide } from './scrim-manager-guide';
 import type { HeroDemandChartDatum } from './scrim-result-charts';
 
 const HeroDemandChart = lazy(() => import('./scrim-result-charts').then(module => ({
@@ -568,6 +570,7 @@ export function ScrimManager({ csrfToken, players, userId, onClose }: ScrimManag
     const [activeTab, setActiveTab] = useState<DetailTab>('operations');
     const [heroPickerMode, setHeroPickerMode] = useState<HeroPickerMode>(null);
     const [isRandomModalOpen, setIsRandomModalOpen] = useState(false);
+    const [isGuideOpen, setIsGuideOpen] = useState(false);
     const { dismissToast, showToast, toast } = useToast();
 
     const load = useCallback(async () => {
@@ -736,14 +739,19 @@ export function ScrimManager({ csrfToken, players, userId, onClose }: ScrimManag
     return (
         <main className="min-h-screen bg-surface px-4 py-6 text-slate-200 md:px-8 md:py-8">
             <div className="mx-auto max-w-6xl">
-                <header className="mb-6 flex items-center justify-between">
+                <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
                     <div>
                         <h1 className="text-2xl font-bold text-white">내전 관리</h1>
                         <p className="mt-1 text-sm text-slate-400">내전 일정과 참여 링크, 결과 기록을 관리합니다.</p>
                     </div>
-                    <button type="button" className="btn-ghost" onClick={onClose}>
-                        <ArrowLeft size={16} className="mr-1 inline" />매칭으로 돌아가기
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button type="button" className="btn-ghost" onClick={() => setIsGuideOpen(true)}>
+                            <BookOpen size={16} className="mr-1 inline" />관리 가이드
+                        </button>
+                        <button type="button" className="btn-ghost" onClick={onClose}>
+                            <ArrowLeft size={16} className="mr-1 inline" />매칭으로 돌아가기
+                        </button>
+                    </div>
                 </header>
 
                 <section className="card">
@@ -890,6 +898,10 @@ export function ScrimManager({ csrfToken, players, userId, onClose }: ScrimManag
                     )}
                 </div>
             </div>
+
+            <AnimatePresence>
+                {isGuideOpen && <ScrimManagerGuide onClose={() => setIsGuideOpen(false)} />}
+            </AnimatePresence>
 
             <AnimatePresence>
                 {heroPickerMode && selected ? (

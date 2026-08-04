@@ -53,6 +53,7 @@ export function MatchResultPanel({
                 <h2 id="match-result-title" className="text-lg font-semibold text-white">팀 배정 결과</h2>
                 <div className="flex flex-wrap justify-end gap-2">
                     <button
+                        id="matching-preference-option"
                         type="button"
                         onClick={() => onIgnorePreferencesChange(!ignorePreferences)}
                         disabled={isBalancing}

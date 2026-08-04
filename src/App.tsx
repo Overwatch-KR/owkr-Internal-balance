@@ -353,6 +353,7 @@ const MatchApp = ({ authMode, csrfToken, logout, user }: MatchAppProps) => {
                         participantCount={participants.length}
                         waitlistCount={waitlist.length}
                         reviewCount={failedParses.length}
+                        onContinueToMatching={() => navigate('/')}
                         onClose={() => navigate('/')}
                     />
                 ) : (

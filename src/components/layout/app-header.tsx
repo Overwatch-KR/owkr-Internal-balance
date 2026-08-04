@@ -85,7 +85,7 @@ export function AppHeader({
                         className="inline-flex min-h-9 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium text-slate-400 transition-colors hover:bg-white/5 hover:text-cyan-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/70"
                     >
                         <BookOpen size={15} aria-hidden="true" />
-                        사용 가이드
+                        매칭 가이드
                     </button>
                     <div className="mx-1 hidden h-4 w-px bg-slate-800 sm:block" aria-hidden="true" />
                     <span className="hidden max-w-28 truncate px-1 text-xs text-slate-500 sm:block">{userName}</span>
