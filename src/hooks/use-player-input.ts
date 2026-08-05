@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Player, Tier } from '../types';
-import { parseMultipleLines, type AvoidedRoleWarning } from '../utils/parser';
+import {
+    parseMultipleLines,
+    type ParseResult,
+    type RosterValidationIssue,
+} from '../utils/parser';
 
 export type PlayerInputMode = 'discord' | 'manual' | 'mentions';
 
@@ -67,20 +71,19 @@ export const usePlayerInput = (initialPlayerCount: number) => {
     );
     const [pasteValidation, setPasteValidation] = useState<{
         sourceText: string;
-        warnings: AvoidedRoleWarning[];
+        result: ParseResult | null;
     }>({
         sourceText: '',
-        warnings: [],
+        result: null,
     });
 
     useEffect(() => {
         if (!pasteText.trim()) return;
 
         const timeoutId = window.setTimeout(() => {
-            const { avoidedRoleWarnings: warnings } = parseMultipleLines(pasteText);
             setPasteValidation({
                 sourceText: pasteText,
-                warnings,
+                result: parseMultipleLines(pasteText),
             });
         }, ROSTER_PASTE_VALIDATION_DELAY_MS);
 
@@ -89,9 +92,10 @@ export const usePlayerInput = (initialPlayerCount: number) => {
 
     const isPasteValidationPending = Boolean(pasteText.trim())
         && pasteValidation.sourceText !== pasteText;
-    const pasteAvoidedRoleWarnings = pasteText.trim() && !isPasteValidationPending
-        ? pasteValidation.warnings
-        : [];
+    const pasteParseResult = pasteText.trim() && !isPasteValidationPending
+        ? pasteValidation.result
+        : null;
+    const pasteValidationIssues: RosterValidationIssue[] = pasteParseResult?.validationIssues ?? [];
 
     useEffect(() => {
         const hasUnsavedInput = Boolean(
@@ -155,7 +159,8 @@ export const usePlayerInput = (initialPlayerCount: number) => {
         inputs,
         isInputCollapsed,
         pasteText,
-        pasteAvoidedRoleWarnings,
+        pasteParseResult,
+        pasteValidationIssues,
         isPasteValidationPending,
         resetInputs,
         selectInputMode,

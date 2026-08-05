@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import type { Player } from '../../../types';
 import type { PlayerInputMode, PlayerInputs } from '../../../hooks/use-player-input';
-import type { AvoidedRoleWarning } from '../../../utils/parser';
+import type { RosterValidationIssue } from '../../../utils/parser';
 import TierSelect from './tier-select';
 import ParticipantChecker from './participant-checker';
 import RosterPasteTextarea from './roster-paste-textarea';
@@ -32,7 +32,7 @@ export interface PlayerFormProps {
     setInputs: React.Dispatch<React.SetStateAction<PlayerFormProps['inputs']>>;
     addPlayer: () => void;
     pasteText: string;
-    pasteAvoidedRoleWarnings: AvoidedRoleWarning[];
+    pasteValidationIssues: RosterValidationIssue[];
     isPasteValidationPending: boolean;
     onPasteTextChange: (value: string) => void;
     handlePaste: () => void;
@@ -53,7 +53,7 @@ export interface PlayerFormProps {
 }
 
 interface RosterImportActionProps {
-    hasWarnings: boolean;
+    hasIssues: boolean;
     hasPasteText: boolean;
     isChecking: boolean;
     onImport: () => void;
@@ -63,7 +63,7 @@ interface RosterImportActionProps {
  * @description 입력 검사가 끝나면 오류 항목이 섞여 있어도 정상 명단을 다음 확인 단계로 보낸다.
  */
 export const RosterImportAction = ({
-    hasWarnings,
+    hasIssues,
     hasPasteText,
     isChecking,
     onImport,
@@ -75,12 +75,12 @@ export const RosterImportAction = ({
             type="button"
             onClick={onImport}
             disabled={isDisabled}
-            aria-describedby={hasWarnings ? 'roster-paste-error-navigation' : undefined}
+            aria-describedby={hasIssues ? 'roster-paste-error-navigation' : undefined}
             className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-40"
         >
             {isChecking
                 ? '입력 확인 중…'
-                : hasWarnings
+                : hasIssues
                     ? '정상 항목 계속 가져오기'
                     : '명단 가져오기'}
         </button>
@@ -101,7 +101,7 @@ const PlayerForm = ({
     setInputs,
     addPlayer,
     pasteText,
-    pasteAvoidedRoleWarnings,
+    pasteValidationIssues,
     isPasteValidationPending,
     onPasteTextChange,
     handlePaste,
@@ -296,13 +296,13 @@ const PlayerForm = ({
                                     </label>
                                     <RosterPasteTextarea
                                         isValidationPending={isPasteValidationPending}
+                                        issues={pasteValidationIssues}
                                         value={pasteText}
-                                        warnings={pasteAvoidedRoleWarnings}
                                         onChange={onPasteTextChange}
                                     />
                                 </div>
                                 <RosterImportAction
-                                    hasWarnings={pasteAvoidedRoleWarnings.length > 0}
+                                    hasIssues={pasteValidationIssues.length > 0}
                                     hasPasteText={Boolean(pasteText.trim())}
                                     isChecking={isPasteValidationPending}
                                     onImport={handlePaste}

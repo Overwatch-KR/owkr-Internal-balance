@@ -142,7 +142,12 @@ describe('로컬 전용 테스트 명단', () => {
 
 describe('parseMultipleLines', () => {
     it('디스코드 헤더, 설명, 예상 티어와 부가 메모를 함께 파싱한다', () => {
-        const { players, failedLines, avoidedRoleWarnings } = parseMultipleLines(RECENT_PARTICIPANTS);
+        const {
+            players,
+            failedLines,
+            avoidedRoleWarnings,
+            validationIssues,
+        } = parseMultipleLines(RECENT_PARTICIPANTS);
 
         expect(failedLines).toEqual([]);
         expect(players).toHaveLength(16);
@@ -154,6 +159,10 @@ describe('parseMultipleLines', () => {
                 avoidedRoles: ['TANK', 'DPS'],
             }),
         ]));
+        expect(validationIssues).toHaveLength(3);
+        expect(validationIssues.every(issue => (
+            issue.kind === 'multiple-avoided-roles' && issue.ranges.length > 0
+        ))).toBe(true);
 
         const byBattleTag = new Map(players.map((player) => [player.name, player]));
         expect(byBattleTag.get('뾱뾱이#31226')).toMatchObject({
@@ -183,6 +192,16 @@ describe('parseMultipleLines', () => {
         expect(result.failedLines).toEqual([
             '상만 · 뿅뿅이 / 아이언 / 그마4 / 그마3',
         ]);
+        expect(result.validationIssues).toHaveLength(3);
+        expect(result.validationIssues[0]).toMatchObject({
+            kind: 'multiple-avoided-roles',
+            playerName: '칠공본드#3150',
+        });
+        expect(result.validationIssues.some(issue => (
+            issue.kind === 'invalid-entry'
+            && issue.message === '배틀태그가 없어 가져올 수 없습니다.'
+            && issue.ranges.length === 1
+        ))).toBe(true);
         expect(result.avoidedRoleWarnings).toEqual(expect.arrayContaining([
             expect.objectContaining({
                 playerName: '칠공본드#3150',
@@ -197,6 +216,28 @@ describe('parseMultipleLines', () => {
         ]));
         expect(result.players.some(player => player.name === '칠공본드#3150')).toBe(false);
         expect(result.players.some(player => player.name === '대인기피증있어요#3166')).toBe(false);
+    });
+
+    it('최신 배틀태그 검사에서 거부한 줄에 원문 위치를 함께 반환한다', () => {
+        const text = [
+            'Valid#1234 다3 / 플2 / 골1',
+            'Broken#123 다3 / 플2 / 골1',
+        ].join('\n');
+        const result = parseMultipleLines(text);
+
+        expect(result.players).toHaveLength(1);
+        expect(result.failedLines).toEqual(['Broken#123 다3 / 플2 / 골1']);
+        expect(result.validationIssues).toEqual([
+            expect.objectContaining({
+                kind: 'invalid-entry',
+                message: '배틀태그는 Player#1234 형식으로 입력해 주세요.',
+                playerName: 'Broken#123',
+                ranges: [{
+                    start: text.indexOf('Broken#123'),
+                    end: text.length,
+                }],
+            }),
+        ]);
     });
 });
 

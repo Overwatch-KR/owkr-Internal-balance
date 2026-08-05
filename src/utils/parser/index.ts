@@ -1,6 +1,7 @@
 import type { Player, Rank, Role } from 'src/types';
 import { TIERS, getScore } from 'src/constants';
 import { normalizePlayerRolePreferences } from 'src/utils/role-preference';
+import { findAvoidedRoleHighlightRanges } from './avoidance-highlight';
 
 /**
  * @description 티어 문자열을 정규화해 TIERS 인덱스로 매핑한다.
@@ -474,6 +475,7 @@ export interface ParseResult {
     players: Player[];
     failedLines: string[];
     avoidedRoleWarnings: AvoidedRoleWarning[];
+    validationIssues: RosterValidationIssue[];
 }
 
 export interface AvoidedRoleWarning {
@@ -481,6 +483,17 @@ export interface AvoidedRoleWarning {
     discordName?: string;
     avoidedRoleCount: number;
     avoidedRoles: Role[];
+}
+
+export interface RosterValidationIssue {
+    kind: 'invalid-entry' | 'multiple-avoided-roles';
+    message: string;
+    playerName?: string;
+    discordName?: string;
+    ranges: Array<{
+        start: number;
+        end: number;
+    }>;
 }
 
 /**
@@ -534,18 +547,45 @@ const createAvoidedRoleWarning = (player: Player): AvoidedRoleWarning | null => 
  */
 export const parseMultipleLines = (text: string): ParseResult => {
     const lines = text.split('\n');
+    const lineOffsets: number[] = [];
+    let nextLineOffset = 0;
+    for (const line of lines) {
+        lineOffsets.push(nextLineOffset);
+        nextLineOffset += line.length + 1;
+    }
     const players: Player[] = [];
     const failedLines: string[] = [];
     const failedLineSet = new Set<string>();
     const avoidedRoleWarnings: AvoidedRoleWarning[] = [];
+    const validationIssues: RosterValidationIssue[] = [];
     const seenNames = new Set<string>();
     const seenPlayerIdentities = new Set<string>();
     let pendingDiscordName: string | undefined;
-    const addFailedLine = (line: string) => {
+    const getLineRange = (startLineIndex: number, endLineIndex = startLineIndex) => {
+        let start = lineOffsets[startLineIndex] ?? 0;
+        let end = (lineOffsets[endLineIndex] ?? start) + (lines[endLineIndex]?.length ?? 0);
+        while (start < end && /\s/.test(text[start])) start += 1;
+        while (end > start && /\s/.test(text[end - 1])) end -= 1;
+        return { start, end };
+    };
+    const addFailedLine = (
+        line: string,
+        startLineIndex: number,
+        endLineIndex = startLineIndex,
+        message = '배틀태그와 역할 티어 형식을 확인해 주세요.',
+    ) => {
         const normalized = line.trim();
         if (!normalized || failedLineSet.has(normalized)) return;
         failedLines.push(normalized);
         failedLineSet.add(normalized);
+        const range = getLineRange(startLineIndex, endLineIndex);
+        validationIssues.push({
+            kind: 'invalid-entry',
+            message,
+            playerName: normalized.match(/[^\s·()]+\s*#\s*\d+/)?.[0]?.replace(/\s+/g, ''),
+            discordName: pendingDiscordName,
+            ranges: range.start < range.end ? [range] : [],
+        });
     };
 
     for (let i = 0; i < lines.length; i++) {
@@ -561,11 +601,21 @@ export const parseMultipleLines = (text: string): ParseResult => {
         if (line.includes('역할 아이콘') || line.includes('—')) continue;
 
         const trimmedLine = line.trim();
-        const hasBattleTag = line.includes('#') && Boolean(line.match(/\d{4,}/));
+        const hasBattleTag = /[^\s#]+\s*#\s*\d{4,}/.test(line);
+        if (line.includes('#') && !hasBattleTag) {
+            addFailedLine(
+                pendingDiscordName ? `${pendingDiscordName} · ${trimmedLine}` : trimmedLine,
+                i,
+                i,
+                '배틀태그는 Player#1234 형식으로 입력해 주세요.',
+            );
+            pendingDiscordName = undefined;
+            continue;
+        }
         if (!hasBattleTag && hasTierInfoOnly(line)) {
             addFailedLine(pendingDiscordName
                 ? `${pendingDiscordName} · ${trimmedLine}`
-                : trimmedLine);
+                : trimmedLine, i, i, '배틀태그가 없어 가져올 수 없습니다.');
             pendingDiscordName = undefined;
             continue;
         }
@@ -609,14 +659,14 @@ export const parseMultipleLines = (text: string): ParseResult => {
                         // 같은 Discord 이름과 배틀태그로 반복 게시된 항목은 한 번만 사용한다.
                     } else if (!seenNames.has(nameOnly.toLowerCase())) {
                         // 파싱 실패 - 닉네임만 추출해서 실패 목록에 추가
-                        addFailedLine(nameOnly);
+                        addFailedLine(nameOnly, i, j - 1);
                         seenNames.add(nameOnly.toLowerCase());
                     }
                     i = j - 1; // 소비한 티어 줄만큼 스킵
                     continue;
                 } else if (!seenNames.has(nameOnly.toLowerCase())) {
                     // 닉네임만 있고 다음 줄에 티어 정보 없음
-                    addFailedLine(nameOnly);
+                    addFailedLine(nameOnly, i, i, '역할 티어 정보가 없어 가져올 수 없습니다.');
                     seenNames.add(nameOnly.toLowerCase());
                     continue;
                 }
@@ -640,15 +690,31 @@ export const parseMultipleLines = (text: string): ParseResult => {
                 // 같은 Discord 이름과 배틀태그로 반복 게시된 항목은 한 번만 사용한다.
             } else {
                 // 파싱 실패 - 닉네임 추출 시도
-                const nameMatch = line.match(/([^\s]+#\d{4,})/);
-                const failedName = nameMatch?.[1];
+                const nameMatch = line.match(/([^\s#]+\s*#\s*\d{4,})/);
+                const failedName = nameMatch?.[1]?.replace(/\s+/g, '');
                 if (failedName && !seenNames.has(failedName.toLowerCase())) {
-                    addFailedLine(failedName);
+                    addFailedLine(failedName, i);
                     seenNames.add(failedName.toLowerCase());
                 }
             }
         }
     }
 
-    return { players, failedLines, avoidedRoleWarnings };
+    for (const warning of avoidedRoleWarnings) {
+        const ranges = findAvoidedRoleHighlightRanges(text, [warning]);
+        validationIssues.push({
+            kind: 'multiple-avoided-roles',
+            message: '비선호 역할은 한 개만 지정해 주세요.',
+            playerName: warning.playerName,
+            discordName: warning.discordName,
+            ranges,
+        });
+    }
+
+    validationIssues.sort((left, right) => (
+        (left.ranges[0]?.start ?? Number.MAX_SAFE_INTEGER)
+        - (right.ranges[0]?.start ?? Number.MAX_SAFE_INTEGER)
+    ));
+
+    return { players, failedLines, avoidedRoleWarnings, validationIssues };
 };

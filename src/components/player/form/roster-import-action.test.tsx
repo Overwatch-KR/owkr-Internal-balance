@@ -6,7 +6,7 @@ describe('RosterImportAction', () => {
     it('비선호 역할 오류가 섞여 있어도 정상 항목은 계속 가져올 수 있다', () => {
         const markup = renderToStaticMarkup(
             <RosterImportAction
-                hasWarnings
+                hasIssues
                 hasPasteText
                 isChecking={false}
                 onImport={vi.fn()}
@@ -22,7 +22,7 @@ describe('RosterImportAction', () => {
     it('입력 확인이 끝나고 경고가 없으면 가져오기를 활성화한다', () => {
         const markup = renderToStaticMarkup(
             <RosterImportAction
-                hasWarnings={false}
+                hasIssues={false}
                 hasPasteText
                 isChecking={false}
                 onImport={vi.fn()}
@@ -36,7 +36,7 @@ describe('RosterImportAction', () => {
     it('키보드 입력 직후 검사 중에는 버튼을 잠시 비활성화한다', () => {
         const markup = renderToStaticMarkup(
             <RosterImportAction
-                hasWarnings={false}
+                hasIssues={false}
                 hasPasteText
                 isChecking
                 onImport={vi.fn()}

@@ -72,8 +72,9 @@ export const useRosterManagement = ({
         inputs,
         isInputCollapsed,
         isPasteValidationPending,
+        pasteParseResult,
         pasteText,
-        pasteAvoidedRoleWarnings,
+        pasteValidationIssues,
         resetInputs,
         selectInputMode,
         setFailedParses,
@@ -312,7 +313,9 @@ export const useRosterManagement = ({
             });
             return;
         }
-        const { players, failedLines, avoidedRoleWarnings } = parseMultipleLines(pasteText);
+        const { players, failedLines, avoidedRoleWarnings } = (
+            pasteParseResult ?? parseMultipleLines(pasteText)
+        );
         const warningLines = avoidedRoleWarnings.map(warning => (
             [
                 warning.discordName,
@@ -353,7 +356,7 @@ export const useRosterManagement = ({
         isInputCollapsed,
         isPasteValidationPending,
         manualInputError,
-        pasteAvoidedRoleWarnings,
+        pasteValidationIssues,
         pasteText,
         pendingIdentityImport,
         requestRosterIdentityReview,
