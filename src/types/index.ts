@@ -107,15 +107,27 @@ export interface BalanceMetrics {
 }
 
 /**
+ * @description 자동 배정 후보의 고정 추천 순위와 알고리즘 내부 균형 비용.
+ * @property rank - 생성 당시의 추천 순위
+ * @property balanceCost - 탱커 안전 기준과 배정 예외 이후 비교하는 총점·역할별 차이·팀 내부 편차의 합산 비용
+ */
+export interface MatchEvaluation {
+    rank: number;
+    balanceCost: number;
+}
+
+/**
  * @description 두 팀 결과와 점수 차이를 묶은 매칭 결과 모델.
  * @property teamA - 1팀 결과
  * @property teamB - 2팀 결과
  * @property diff - 실제 점수 차이
  * @property metrics - 밸런스 품질 지표
+ * @property evaluation - 자동 배정 후보의 추천 순위와 균형 비용
  */
 export interface MatchResultData {
     teamA: TeamResult;
     teamB: TeamResult;
     diff: number;
     metrics?: BalanceMetrics;
+    evaluation?: MatchEvaluation;
 }

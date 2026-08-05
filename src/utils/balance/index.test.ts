@@ -60,23 +60,23 @@ const createTankSafeguardPlayers = (secondTankScore: number): Player[] => {
     ];
 };
 
-const getAssignmentSlots = (result: MatchResultData): Map<number, string> => {
-    const slots = new Map<number, string>();
+const getAssignmentTeams = (result: MatchResultData): Map<number, string> => {
+    const teams = new Map<number, string>();
     const addTeam = (team: 'A' | 'B', assignment: MatchResultData['teamA']['assignment']) => {
-        slots.set(assignment.TANK[0].id, `${team}:TANK`);
-        for (const player of assignment.DPS) slots.set(player.id, `${team}:DPS`);
-        for (const player of assignment.SUPPORT) slots.set(player.id, `${team}:SUPPORT`);
+        for (const players of Object.values(assignment)) {
+            for (const player of players) teams.set(player.id, team);
+        }
     };
 
     addTeam('A', result.teamA.assignment);
     addTeam('B', result.teamB.assignment);
-    return slots;
+    return teams;
 };
 
-const countAssignmentChanges = (first: MatchResultData, second: MatchResultData): number => {
-    const firstSlots = getAssignmentSlots(first);
-    const secondSlots = getAssignmentSlots(second);
-    return [...firstSlots].filter(([playerId, slot]) => secondSlots.get(playerId) !== slot).length;
+const countTeamChanges = (first: MatchResultData, second: MatchResultData): number => {
+    const firstTeams = getAssignmentTeams(first);
+    const secondTeams = getAssignmentTeams(second);
+    return [...firstTeams].filter(([playerId, team]) => secondTeams.get(playerId) !== team).length;
 };
 
 describe('balancePlayers', () => {
@@ -107,10 +107,13 @@ describe('balancePlayers', () => {
             const rank = role === 'TANK' ? player.tank : role === 'DPS' ? player.dps : player.sup;
             return rank.isPreferred;
         })).toBe(true);
-        expect(balanceResult.alternatives).toHaveLength(4);
+        expect(balanceResult.alternatives).toHaveLength(11);
         const results = [balanceResult.result, ...balanceResult.alternatives];
+        expect(results.map(result => result.evaluation?.rank)).toEqual(
+            Array.from({ length: 12 }, (_, index) => index + 1),
+        );
         expect(results.every((result, index) => results.slice(index + 1).every(
-            (otherResult) => countAssignmentChanges(result, otherResult) >= 3,
+            (otherResult) => countTeamChanges(result, otherResult) >= 2,
         ))).toBe(true);
     });
 

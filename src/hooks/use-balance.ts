@@ -6,6 +6,8 @@ interface BalanceTeamsOptions extends BalanceOptions {
     preserveResult?: MatchResultData;
 }
 
+const MAX_ALTERNATIVE_COUNT = 11;
+
 const getTeamAssignmentKey = (assignment: MatchResultData['teamA']['assignment']): string => [
     `T:${assignment.TANK.map(player => player.id).toSorted((a, b) => a - b).join(',')}`,
     `D:${assignment.DPS.map(player => player.id).toSorted((a, b) => a - b).join(',')}`,
@@ -79,7 +81,7 @@ export const useBalance = (
                         if (seenResults.has(key)) return false;
                         seenResults.add(key);
                         return true;
-                    }).slice(0, 4);
+                    }).slice(0, MAX_ALTERNATIVE_COUNT);
 
                     setAlternatives(generatedAlternatives);
                 } else {

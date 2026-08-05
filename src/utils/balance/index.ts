@@ -11,9 +11,9 @@ import type {
 
 const TEAM_SIZE = 5;
 const PLAYER_COUNT = 10;
-const RESULT_COUNT = 5;
+const RESULT_COUNT = 12;
 const QUALITY_POOL_SIZE = 80;
-const MIN_ASSIGNMENT_CHANGES = 3;
+const MIN_TEAM_CHANGES = 2;
 const MAX_TANK_MATCHUP_DIFF = 600;
 const ROLES: Role[] = ['TANK', 'DPS', 'SUPPORT'];
 
@@ -239,18 +239,41 @@ const buildAssignmentSlotMap = (candidate: Candidate): Map<number, string> => {
 };
 
 /**
- * @description 두 후보 사이에서 팀 또는 역할이 달라진 플레이어 수를 계산한다.
+ * @description 후보에서 각 플레이어가 속한 팀을 비교 가능한 맵으로 만든다.
  */
-const countAssignmentChanges = (first: Candidate, second: Candidate): number => {
-    const firstSlots = buildAssignmentSlotMap(first);
-    const secondSlots = buildAssignmentSlotMap(second);
+const buildTeamMap = (candidate: Candidate): Map<number, 'A' | 'B'> => {
+    const teams = new Map<number, 'A' | 'B'>();
+    for (const players of Object.values(candidate.teamA.assignment)) {
+        for (const player of players) teams.set(player.id, 'A');
+    }
+    for (const players of Object.values(candidate.teamB.assignment)) {
+        for (const player of players) teams.set(player.id, 'B');
+    }
+    return teams;
+};
+
+/**
+ * @description 두 후보 사이에서 다른 팀으로 이동한 플레이어 수를 계산한다.
+ */
+const countTeamChanges = (first: Candidate, second: Candidate): number => {
+    const firstTeams = buildTeamMap(first);
+    const secondTeams = buildTeamMap(second);
     let changes = 0;
 
-    for (const [playerId, slot] of firstSlots) {
-        if (secondSlots.get(playerId) !== slot) changes++;
+    for (const [playerId, team] of firstTeams) {
+        if (secondTeams.get(playerId) !== team) changes++;
     }
 
     return changes;
+};
+
+/**
+ * @description 두 후보의 팀과 역할 배치가 완전히 같은지 확인한다.
+ */
+const hasSameAssignment = (first: Candidate, second: Candidate): boolean => {
+    const firstSlots = buildAssignmentSlotMap(first);
+    const secondSlots = buildAssignmentSlotMap(second);
+    return [...firstSlots].every(([playerId, slot]) => secondSlots.get(playerId) === slot);
 };
 
 /**
@@ -263,7 +286,7 @@ const selectDiverseCandidates = (candidates: Candidate[]): Candidate[] => {
     const selected = [bestCandidate];
     for (const candidate of candidates.slice(1)) {
         const isDiverse = selected.every(
-            (existing) => countAssignmentChanges(candidate, existing) >= MIN_ASSIGNMENT_CHANGES,
+            (existing) => countTeamChanges(candidate, existing) >= MIN_TEAM_CHANGES,
         );
         if (!isDiverse) continue;
 
@@ -273,7 +296,7 @@ const selectDiverseCandidates = (candidates: Candidate[]): Candidate[] => {
 
     for (const candidate of candidates.slice(1)) {
         const isAlreadySelected = selected.includes(candidate);
-        const isDuplicate = selected.some((existing) => countAssignmentChanges(candidate, existing) === 0);
+        const isDuplicate = selected.some((existing) => hasSameAssignment(candidate, existing));
         if (isAlreadySelected || isDuplicate) continue;
 
         selected.push(candidate);
@@ -302,7 +325,7 @@ const buildMetrics = (teamA: AssignmentResult, teamB: AssignmentResult): Balance
 /**
  * @description 내부 후보를 화면과 저장소에서 사용하는 매칭 결과로 변환한다.
  */
-const toMatchResult = (candidate: Candidate): MatchResultData => {
+const toMatchResult = (candidate: Candidate, rank?: number): MatchResultData => {
     const teamA: TeamResult = {
         name: 'TEAM 1',
         assignment: candidate.teamA.assignment,
@@ -319,6 +342,10 @@ const toMatchResult = (candidate: Candidate): MatchResultData => {
         teamB,
         diff: candidate.realDiff,
         metrics: buildMetrics(candidate.teamA, candidate.teamB),
+        evaluation: rank === undefined ? undefined : {
+            rank,
+            balanceCost: Math.round(candidate.compositeScore),
+        },
     };
 };
 
@@ -411,6 +438,7 @@ export const balancePlayers = (
 
         const teamAAssignments = getAllTeamAssignments(teamAPlayers);
         const teamBAssignments = getAllTeamAssignments(teamBPlayers);
+        let bestCandidateForTeamSplit: Candidate | null = null;
 
         for (const teamA of teamAAssignments) {
             for (const teamB of teamBAssignments) {
@@ -419,7 +447,7 @@ export const balancePlayers = (
                 const roleMatchupDiff = calculateRoleMatchupDiff(teamA, teamB);
                 const teamVariance = teamA.teamStdDev + teamB.teamStdDev;
 
-                insertCandidate(topCandidates, {
+                const candidate: Candidate = {
                     teamA,
                     teamB,
                     preferenceViolations: teamA.preferenceViolations + teamB.preferenceViolations,
@@ -430,16 +458,29 @@ export const balancePlayers = (
                         + teamVariance * SCORE_WEIGHTS.teamVariance,
                     realDiff,
                     tankDiff,
-                }, options);
+                };
+                if (
+                    !bestCandidateForTeamSplit
+                    || compareCandidates(candidate, bestCandidateForTeamSplit, options) < 0
+                ) {
+                    bestCandidateForTeamSplit = candidate;
+                }
             }
+        }
+
+        if (bestCandidateForTeamSplit) {
+            insertCandidate(topCandidates, bestCandidateForTeamSplit, options);
         }
     }
 
-    const [bestCandidate, ...alternativeCandidates] = selectDiverseCandidates(topCandidates);
+    const selectedCandidates = selectDiverseCandidates(topCandidates);
+    const [bestCandidate, ...alternativeCandidates] = selectedCandidates;
     if (!bestCandidate) throw new Error('유효한 팀 조합을 찾지 못했습니다.');
 
     return {
-        result: toMatchResult(bestCandidate),
-        alternatives: alternativeCandidates.map(toMatchResult),
+        result: toMatchResult(bestCandidate, 1),
+        alternatives: alternativeCandidates.map((candidate, index) => (
+            toMatchResult(candidate, index + 2)
+        )),
     };
 };
