@@ -1,9 +1,10 @@
 import { BookOpen, CalendarDays, FileSpreadsheet, LogOut } from 'lucide-react';
 import { motion } from 'framer-motion';
-import type { AuthMode } from '../../hooks/use-auth';
+import type { AuthMode, DataMode } from '../../hooks/use-auth';
 
 interface AppHeaderProps {
     authMode: AuthMode;
+    dataMode: DataMode;
     isGuideOpen: boolean;
     isLoggingOut: boolean;
     isUserSheetOpen: boolean;
@@ -20,6 +21,7 @@ interface AppHeaderProps {
  */
 export function AppHeader({
     authMode,
+    dataMode,
     isGuideOpen,
     isLoggingOut,
     isUserSheetOpen,
@@ -43,10 +45,16 @@ export function AppHeader({
                     </motion.h1>
                     {authMode === 'local' && (
                         <span
-                            title="연결된 Redis의 변경 사항이 즉시 반영됩니다."
-                            className="shrink-0 rounded-full border border-amber-400/25 bg-amber-400/10 px-2 py-0.5 text-[10px] font-semibold text-amber-200"
+                            title={dataMode === 'local'
+                                ? '원격 Redis에 연결하지 않고 참가 명단과 결과를 현재 브라우저에만 저장합니다.'
+                                : '연결된 Redis의 변경 사항이 즉시 반영됩니다.'}
+                            className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                                dataMode === 'local'
+                                    ? 'border-emerald-400/25 bg-emerald-400/10 text-emerald-200'
+                                    : 'border-amber-400/25 bg-amber-400/10 text-amber-200'
+                            }`}
                         >
-                            로컬 인증
+                            {dataMode === 'local' ? '로컬 전용' : '로컬 인증'}
                         </span>
                     )}
                 </div>

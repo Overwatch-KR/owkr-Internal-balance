@@ -8,9 +8,11 @@ export interface AuthUser {
 }
 
 export type AuthMode = 'discord' | 'local';
+export type DataMode = 'remote' | 'local';
 
 interface AuthResponse {
     authMode?: AuthMode;
+    dataMode?: DataMode;
     loggedIn: boolean;
     user?: AuthUser;
     csrfToken?: string;
@@ -21,6 +23,7 @@ interface AuthResponse {
  */
 export const useAuth = () => {
     const [authMode, setAuthMode] = useState<AuthMode>('discord');
+    const [dataMode, setDataMode] = useState<DataMode>('remote');
     const [isLoading, setIsLoading] = useState(true);
     const [user, setUser] = useState<AuthUser | null>(null);
     const [csrfToken, setCsrfToken] = useState('');
@@ -34,6 +37,7 @@ export const useAuth = () => {
                 signal,
             });
             setAuthMode(data.authMode === 'local' ? 'local' : 'discord');
+            setDataMode(data.dataMode === 'local' ? 'local' : 'remote');
             setUser(data.loggedIn ? data.user ?? null : null);
             setCsrfToken(data.loggedIn ? data.csrfToken ?? '' : '');
         } catch (loadError) {
@@ -68,5 +72,5 @@ export const useAuth = () => {
         void loadSession();
     }, [loadSession]);
 
-    return { authMode, csrfToken, error, isLoading, logout, retry, user };
+    return { authMode, csrfToken, dataMode, error, isLoading, logout, retry, user };
 };

@@ -12,7 +12,7 @@ import { useOnboardingGuide } from './hooks/use-onboarding-guide';
 import { useToast } from './hooks/use-toast';
 import { useMatchActions } from './hooks/use-match-actions';
 import { useRosterManagement } from './hooks/use-roster-management';
-import { useAuth, type AuthMode, type AuthUser } from './hooks/use-auth';
+import { useAuth, type AuthMode, type AuthUser, type DataMode } from './hooks/use-auth';
 import { useMatchSession } from './hooks/use-match-session';
 import { useUserSheet } from './hooks/use-user-sheet';
 import { getErrorMessage } from './utils/api';
@@ -44,6 +44,7 @@ const UserSheetModal = lazy(() => import('./components/user-sheet/user-sheet-mod
 interface MatchAppProps {
     authMode: AuthMode;
     csrfToken: string;
+    dataMode: DataMode;
     logout: () => Promise<void>;
     user: AuthUser;
 }
@@ -59,7 +60,7 @@ const PageLoadingBar = () => (
     />
 );
 
-const MatchApp = ({ authMode, csrfToken, logout, user }: MatchAppProps) => {
+const MatchApp = ({ authMode, csrfToken, dataMode, logout, user }: MatchAppProps) => {
     const {
         alternatives,
         balanceTeams,
@@ -326,6 +327,7 @@ const MatchApp = ({ authMode, csrfToken, logout, user }: MatchAppProps) => {
             </a>
             <AppHeader
                 authMode={authMode}
+                dataMode={dataMode}
                 isGuideOpen={isGuideOpen || isGuideResumePromptOpen}
                 isLoggingOut={isLoggingOut}
                 isUserSheetOpen={userSheet.isOpen}
@@ -441,6 +443,7 @@ const MatchApp = ({ authMode, csrfToken, logout, user }: MatchAppProps) => {
                         entries={userSheet.entries}
                         failedLines={pendingIdentityImport.failedLines}
                         isSubmitting={isApplyingIdentityImport}
+                        isLocalOnly={dataMode === 'local'}
                         players={pendingIdentityImport.incoming}
                         submitError={identityImportError}
                         onApplyRosterOnly={handleApplyIdentityRosterOnly}
@@ -494,13 +497,14 @@ const MatchApp = ({ authMode, csrfToken, logout, user }: MatchAppProps) => {
 };
 
 const App = () => {
-    const { authMode, csrfToken, error, isLoading, logout, retry, user } = useAuth();
+    const { authMode, csrfToken, dataMode, error, isLoading, logout, retry, user } = useAuth();
     if (isLoading) return <LoadingScreen />;
     if (!user) return <LoginScreen serviceError={error} onRetry={retry} />;
     return (
         <MatchApp
             authMode={authMode}
             csrfToken={csrfToken}
+            dataMode={dataMode}
             logout={logout}
             user={user}
         />

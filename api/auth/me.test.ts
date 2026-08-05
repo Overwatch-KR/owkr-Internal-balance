@@ -33,6 +33,7 @@ describe('GET /api/auth/me', () => {
         expect(response.status).toHaveBeenCalledWith(200);
         expect(response.json).toHaveBeenCalledWith({
             authMode: 'local',
+            dataMode: 'remote',
             loggedIn: true,
             user: {
                 id: 'owkr-local-admin',
@@ -53,7 +54,23 @@ describe('GET /api/auth/me', () => {
         expect(response.status).toHaveBeenCalledWith(200);
         expect(response.json).toHaveBeenCalledWith({
             authMode: 'discord',
+            dataMode: 'remote',
             loggedIn: false,
         });
+    });
+
+    it('원격 저장소를 차단한 실행에서는 로컬 데이터 모드를 반환한다', () => {
+        vi.stubEnv('NODE_ENV', 'development');
+        vi.stubEnv('OWKR_LOCAL_AUTH_BYPASS', 'true');
+        vi.stubEnv('OWKR_LOCAL_DATA_ONLY', 'true');
+        const response = createResponse();
+
+        handler(createRequest(), response);
+
+        expect(response.json).toHaveBeenCalledWith(expect.objectContaining({
+            authMode: 'local',
+            dataMode: 'local',
+            loggedIn: true,
+        }));
     });
 });

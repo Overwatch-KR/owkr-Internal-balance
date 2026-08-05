@@ -139,18 +139,55 @@ BattleTag가 일치하면 화면의 대진표에 표시되지만, 복사 이미�
 
 ```bash
 pnpm install
-cp .env.example .env.local
-# .env.local에 운영 Redis URL과 Token 설정
-pnpm dev:local
+pnpm dev:local-only
 ```
+
+`dev:local-only`는 별도 `.env.local` 설정 없이 실행할 수 있으며 원격 Redis 연결을 코드에서
+차단합니다. 운영 데이터가 필요한 개발에만 `.env.example`을 `.env.local`로 복사해 설정합니다.
 
 `pnpm dev`는 Vite 정적 화면만 실행합니다. 로그인, 유저 시트와 메모 API까지 확인하려면
 Vercel Functions를 함께 실행하는 다음 명령 중 하나를 사용해야 합니다.
 
 | 명령 | 인증 방식 | 용도 |
 | --- | --- | --- |
+| `pnpm dev:local-only` | 고정 로컬 사용자 | 원격 저장소 없이 참가 명단·팀 결과 UI 테스트 |
 | `pnpm dev:local` | 고정 로컬 사용자 | Discord OAuth 없이 운영 Redis에 연결 |
 | `pnpm dev:full` | 실제 Discord OAuth | OAuth 로그인과 운영 환경에 가까운 인증 흐름 검증 |
+
+### 로컬 전용 후보 조합 Dialog 테스트
+
+다음 명령으로 실행합니다.
+
+```bash
+pnpm install
+pnpm dev:local-only
+```
+
+브라우저에서 `http://localhost:3000`을 열고 아래 순서로 확인합니다.
+
+1. `참가자 추가·관리` → `채팅 붙여넣기`로 이동합니다.
+2. 아래 명단을 붙여넣고 `명단 가져오기`를 누릅니다.
+3. 참가자 검토 Dialog에서 Discord ID를 입력하지 않고 `로컬 명단에만 적용`을 누릅니다.
+4. `팀 편성 화면으로 이동` → `팀 자동 배정`을 누릅니다.
+5. 결과 아래 추천 후보 2개와 `전체 12개 자세히 보기` Dialog를 확인합니다.
+6. Dialog에서 다른 조합을 적용해 추천 순위와 현재 조합 표시가 유지되는지 확인합니다.
+
+```text
+LocalTank1#1001 마3! / 다2 / 플1?
+LocalTank2#1002 다1! / 마5? / 다3
+LocalDps1#1003 플2? / 마2! / 다4
+LocalDps2#1004 다5 / 마4! / 플1?
+LocalDps3#1005 골1? / 다2! / 마5
+LocalDps4#1006 다3 / 마1! / 플2?
+LocalSup1#1007 플1? / 다4 / 마3!
+LocalSup2#1008 다5 / 골1? / 마1!
+LocalSup3#1009 골2? / 플1 / 다2!
+LocalSup4#1010 다4 / 플3? / 그5!
+```
+
+macOS에서는 `pbcopy < docs/local-only-roster.txt`로 테스트 명단을 바로 복사할 수 있습니다.
+이 모드의 참가 명단과 팀 결과는 브라우저에만 30분 동안 저장되며, 유저 시트·개인 메모·내전
+기록은 원격 저장소에 연결되거나 기록되지 않습니다.
 
 `pnpm dev:local`은 명령을 실행한 로컬 Vercel 개발 서버의 루프백 요청에만 인증 우회를
 활성화합니다. Discord Client ID, Client Secret, 관리자 목록과 JWT Secret은 필요하지 않지만,
@@ -177,6 +214,7 @@ ADMIN_USER_IDS=
 JWT_SECRET=
 UPSTASH_REDIS_REST_URL=
 UPSTASH_REDIS_REST_TOKEN=
+OWKR_LOCAL_DATA_ONLY=
 ```
 
 | 변수 | 설명 |
@@ -188,6 +226,7 @@ UPSTASH_REDIS_REST_TOKEN=
 | `JWT_SECRET` | OAuth state와 로그인 세션 서명 키. 최소 32자 |
 | `UPSTASH_REDIS_REST_URL` | Upstash Redis REST URL |
 | `UPSTASH_REDIS_REST_TOKEN` | Upstash Redis REST Token |
+| `OWKR_LOCAL_DATA_ONLY` | `true`이면 자격 증명이 있어도 원격 Redis 연결 차단 |
 
 Redis 연동에서 `KV_REST_API_URL`과 `KV_REST_API_TOKEN`이 제공되는 경우에도 자동으로 인식합니다.
 `KV_URL`과 `REDIS_URL`은 현재 애플리케이션 코드에서 직접 사용하지 않습니다.

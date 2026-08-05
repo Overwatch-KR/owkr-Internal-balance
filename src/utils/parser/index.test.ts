@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { SAMPLE_ROSTER } from '../../constants';
 import { balancePlayers } from '../balance';
 import { reconcilePlayers } from '../player';
@@ -7,6 +8,11 @@ import {
     parseLineToPlayer,
     parseMultipleLines,
 } from './index';
+
+const LOCAL_ONLY_TEST_ROSTER = readFileSync(
+    new URL('../../../docs/local-only-roster.txt', import.meta.url),
+    'utf8',
+);
 
 const RECENT_PARTICIPANTS = `
 **바비호바**역할 아이콘, 막시밀리앙 — **어제 오후 8:20**
@@ -120,6 +126,17 @@ describe('가이드 예시 명단', () => {
             avoidedAssignments: 1,
             unrankedAssignments: 1,
         });
+    });
+});
+
+describe('로컬 전용 테스트 명단', () => {
+    it('문서에 제공한 10명을 경고 없이 파싱하고 후보 조합을 생성한다', () => {
+        const parsed = parseMultipleLines(LOCAL_ONLY_TEST_ROSTER);
+
+        expect(parsed.players).toHaveLength(10);
+        expect(parsed.failedLines).toEqual([]);
+        expect(parsed.avoidedRoleWarnings).toEqual([]);
+        expect(balancePlayers(parsed.players).alternatives).toHaveLength(11);
     });
 });
 
